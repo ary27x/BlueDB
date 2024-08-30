@@ -760,7 +760,8 @@ class EvaluationWrapper
         LEXER_STATUS CURRENT_LEXER_STATUS =  MAIN_LEXER->tokenize();
         // USING THE PARSER TO PARSE THE TOKEN_STREAM
         PARSER_STATUS CURRENT_PARSER_STATUS;
-        if (CURRENT_LEXER_STATUS == LEXER_SUCCESS)
+        if (CURRENT_LEXER_STATUS == LEXER_SUCCESS) // could make use of assert here to make things cleaner
+            // and write cleaner and more understandable code 
         {
             MAIN_PARSER->initialize(MAIN_LEXER->getTokenStream());
             CURRENT_PARSER_STATUS = MAIN_PARSER->parse();
