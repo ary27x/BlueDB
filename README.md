@@ -1,4 +1,14 @@
-TODO remaining
+Future things todo and add : 
+- make the core db engine
+- implement gui using wXwidgets
+- write a network layer which would use socket programming to support LAN queries
+- write an upgraded network layer which would support WAN queries maybe using ngrok or custom tunnelling service
+- create a react native application so that the software could be used in android devices as well as ios devices
+- train an OCR deeplearning model to recognize english and hindi text (devanagari) and also recognize tabular format, which would basically take in the image of tabular data written on a piece of paper and then would run it through the ocr and generate the table itself.
+- write drivers that could basically convert a blueDB table to a mysql table , something on this line to make things interchangable between blueDB and mainstream database softwares
+
+
+Syntax TODO remaining
 
 1) variables and functions syntax 
 
