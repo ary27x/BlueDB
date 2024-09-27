@@ -8,6 +8,75 @@
 #define SUCCESS   "\e[0;32m"
 #define DEFAULT   "\e[0;37m"
 #define DB_PROMPT "blue_db~ :" // this is subject to change
+/*
+int
+float 
+string 
+char 
+bool
+date 
+time
+new 
+add
+print
+remove
+update
+*/
+
+
+/*
+keywords : 
+int : 5 : int_data
+float  float_data
+string  string_data
+char  
+bool token_true token_false
+date 
+time
+
+
+
+new 
+:: 
+, 
+add 
+[ 
+]
+" "
+print
+remove
+update
+||
+&&
+->
+
+datatypes : 
+int , float , string , char , bool , date , time
+
+creating a table : 
+-> new students :: int id , string name
+
+adding data to the table : 
+-> add students :: [1 , "Aryan"] , [2 , "Joey"]
+
+printing data from the table : 
+-> print students 
+-> print students :: name = "Aryan" || id = 2
+-> print students.name :: name = "Aryan" && id = 5
+
+remove : 
+-> remove students 
+-> remove students :: name = "Aryan" && id = 1
+
+update : 
+update students :: name = "Aryan" || id = 7 -> name = "Aryan Kumar " , id = 5
+
+exit
+
+
+*/
+ 
+
 
 /*
 
@@ -54,29 +123,39 @@ typedef enum
 
 typedef enum 
 {
-    TOKEN_INSERT , 
-    TOKEN_INTO , 
-    TOKEN_VALUE ,
-    TOKEN_DELETE , 
-    TOKEN_FROM, 
-    TOKEN_SEARCH,
-    TOKEN_IN,
-    TOKEN_CREATE,
+    TOKEN_INT,
+    TOKEN_FLOAT,
+    TOKEN_STRING,
+    TOKEN_CHAR,
+    TOKEN_BOOL,
+    TOKEN_DATE,
+    TOKEN_TIME,
     TOKEN_NEW, 
-    TOKEN_DATABASE,
-    TOKEN_TABLE,
-    TOKEN_USE,
+    TOKEN_DOUBLE_COLON, 
+    TOKEN_DOT,
+    TOKEN_COMMA,
+    TOKEN_ADD, 
+    TOKEN_LEFT_SQR_BRACKET,
+    TOKEN_RIGHT_SQR_BRACKET,
+    TOKEN_LEFT_PAREN, 
+    TOKEN_RIGHT_PAREN,
+    TOKEN_STRING_DATA,
+    TOKEN_INT_DATA, 
+    TOKEN_FLOAT_DATA,
+    TOKEN_TRUE,
+    TOKEN_FALSE,
+    TOKEN_PRINT, 
+    TOKEN_REMOVE,
     TOKEN_UPDATE , 
-    TOKEN_WHERE,
-    TOKEN_WITH,
+    TOKEN_NOT, 
+    TOKEN_OR , 
+    TOKEN_AND , 
+    TOKEN_ARROW , 
     TOKEN_EQUALS , 
     TOKEN_LESS_THAN , 
     TOKEN_GREATER_THAN,
-    TOKEN_STRING , 
-    TOKEN_INTEGER, 
-    TOKEN_LEFT_PAREN, 
-    TOKEN_RIGHT_PAREN,
-    TOKEN_COMMA,
+    TOKEN_LESS_THAN_EQUALS, 
+    TOKEN_GREATER_THAN_EQUALS, 
     TOKEN_ID , 
     TOKEN_EXIT,
     TOKEN_END_OF_INPUT
@@ -85,20 +164,24 @@ typedef enum
 
 typedef enum 
 {
-    NODE_CREATE_DATABASE,
-    NODE_CREATE_TABLE,
-    NODE_USE,
-    NODE_INSERT,
-    NODE_SEARCH, 
-    NODE_DELETE, 
-    NODE_UPDATE,
-    NODE_SUB_VALUES,
-    NODE_STRING,
-    NODE_INTEGER,
+    NODE_NEW, 
+    NODE_ADD, 
+    NODE_PRINT, 
+    NODE_UPDATE , 
+    NODE_REMOVE ,
+    NODE_EXIT, 
+    NODE_NOT, 
+    NODE_AND, 
+    NODE_OR,
     NODE_CONDITION_EQUALS ,
     NODE_CONDITION_GREATER_THAN ,
     NODE_CONDITION_LESS_THAN ,
-    NODE_EXIT
+    NODE_CONDITION_LESS_THAN_EQUALS, 
+    NODE_CONDITION_GREATER_THAN_EQUALS,  
+    NODE_SUB_VALUES,
+    NODE_STRING,
+    NODE_INT,
+    NODE_FLOAT, 
 } NODE_SET;
 
 
@@ -116,20 +199,24 @@ std::string nodeTypeToString(NODE_SET REQUIRED_NODE)
 {
     switch(REQUIRED_NODE)
     {
-        case NODE_CREATE_DATABASE        : return "NODE_CREATE_DATABASE";
-        case NODE_CREATE_TABLE           : return "NODE_CREATE_TABLE";
-        case NODE_USE                    : return "NODE_USE";
-        case NODE_INSERT                 : return "NODE_INSERT";
-        case NODE_SEARCH                 : return "NODE_SEARCH";
-        case NODE_DELETE                 : return "NODE_DELETE";
-        case NODE_UPDATE                 : return "NODE_UPDATE";
-        case NODE_SUB_VALUES             : return "NODE_SUB_VALUES";
-        case NODE_STRING                 : return "NODE_STRING";
-        case NODE_INTEGER                : return "NODE_INTEGER";
-        case NODE_CONDITION_EQUALS       : return "NODE_CONDITION_EQUALS";
-        case NODE_CONDITION_LESS_THAN    : return "NODE_CONDITION_LESS_THAN";
-        case NODE_CONDITION_GREATER_THAN : return "NODE_CONDITION_GREATER_THAN";
-        case NODE_EXIT                   : return "NODE_EXIT";
+       case NODE_NEW                            : return "NODE_NEW";
+       case NODE_ADD                            : return "NODE_ADD";
+       case NODE_PRINT                          : return "NODE_PRINT";
+       case NODE_UPDATE                         : return "NODE_UPDATE";
+       case NODE_REMOVE                         : return "NODE_REMOVE";
+       case NODE_EXIT                           : return "NODE_EXIT";
+       case NODE_NOT                            : return "NODE_NOT";
+       case NODE_AND                            : return "NODE_AND";
+       case NODE_OR                             : return "NODE_OR";
+       case NODE_CONDITION_EQUALS               : return "NODE_CONDITION_EQUALS";
+       case NODE_CONDITION_GREATER_THAN         : return "NODE_CONDITION_GREATER_THAN";
+       case NODE_CONDITION_LESS_THAN            : return "NODE_CONDITION_LESS_THAN";
+       case NODE_CONDITION_LESS_THAN_EQUALS     : return "NODE_CONDITION_LESS_THAN_EQUALS";
+       case NODE_CONDITION_GREATER_THAN_EQUALS  : return "NODE_CONDITION_GREATER_THAN_EQUALS";
+       case NODE_SUB_VALUES                     : return "NODE_SUB_VALUES";
+       case NODE_STRING                         : return "NODE_STRING";
+       case NODE_INT                            : return "NODE_INT";
+       case NODE_FLOAT                          : return "NODE_FLOAT";
     }
     return "[!] UNINDENTIFIED NODE : " + REQUIRED_NODE;
 }
@@ -145,71 +232,64 @@ std::string tokenTypeToString(TOKEN_SET REQUIRED_TOKEN)
 {
     switch (REQUIRED_TOKEN)
     {
-        case TOKEN_INSERT      : return "TOKEN_INSERT"; 
-        case TOKEN_INTO        : return "TOKEN_INTO";
-        case TOKEN_VALUE       : return "TOKEN_VALUE"; 
-        case TOKEN_DELETE      : return "TOKEN_DELETE"; 
-        case TOKEN_FROM        : return "TOKEN_FROM"; 
-        case TOKEN_SEARCH      : return "TOKEN_SEARCH"; 
-        case TOKEN_IN          : return "TOKEN_IN"; 
-        case TOKEN_CREATE      : return "TOKEN_CREATE";
-        case TOKEN_NEW         : return "TOKEN_NEW";
-        case TOKEN_DATABASE    : return "TOKEN_DATABASE";
-        case TOKEN_TABLE       : return "TOKEN_TABLE";
-        case TOKEN_USE         : return "TOKEN_USE";
-        case TOKEN_UPDATE      : return "TOKEN_UPDATE";
-        case TOKEN_WHERE       : return "TOKEN_WHERE";
-        case TOKEN_WITH        : return "TOKEN_WITH";
-        case TOKEN_EQUALS      : return "TOKEN_EQUALS";
-        case TOKEN_LESS_THAN   : return "TOKEN_LESS_THAN";
-        case TOKEN_GREATER_THAN: return "TOKEN_GREATER_THAN";
-        case TOKEN_STRING      : return "TOKEN_STRING"; 
-        case TOKEN_INTEGER     : return "TOKEN_INTEGER"; 
-        case TOKEN_LEFT_PAREN  : return "TOKEN_LEFT_PAREN"; 
-        case TOKEN_RIGHT_PAREN : return "TOKEN_RIGHT_PAREN"; 
-        case TOKEN_COMMA       : return "TOKEN_COMMA";
-        case TOKEN_ID          : return "TOKEN_ID";
-        case TOKEN_EXIT        : return "TOKEN_EXIT";
-        case TOKEN_END_OF_INPUT       : return "TOKEN_END_OF_INPUT";
-        
+       case TOKEN_INT                  : return "TOKEN_INT";
+       case TOKEN_FLOAT                : return "TOKEN_FLOAT";
+       case TOKEN_STRING               : return "TOKEN_STRING";
+       case TOKEN_CHAR                 : return "TOKEN_CHAR";
+       case TOKEN_BOOL                 : return "TOKEN_BOOL";
+       case TOKEN_DATE                 : return "TOKEN_DATE";
+       case TOKEN_TIME                 : return "TOKEN_TIME";
+       case TOKEN_NEW                  : return "TOKEN_NEW";
+       case TOKEN_DOUBLE_COLON         : return "TOKEN_DOUBLE_COLON";
+       case TOKEN_DOT                  : return "TOKEN_DOT";
+       case TOKEN_COMMA                : return "TOKEN_COMMA";
+       case TOKEN_ADD                  : return "TOKEN_ADD";
+       case TOKEN_LEFT_SQR_BRACKET     : return "TOKEN_LEFT_SQR_BRACKET";
+       case TOKEN_RIGHT_SQR_BRACKET    : return "TOKEN_RIGHT_SQR_BRACKET";
+       case TOKEN_LEFT_PAREN           : return "TOKEN_LEFT_PAREN";
+       case TOKEN_RIGHT_PAREN          : return "TOKEN_RIGHT_PAREN";
+       case TOKEN_STRING_DATA          : return "TOKEN_STRING_DATA";
+       case TOKEN_INT_DATA             : return "TOKEN_INT_DATA";
+       case TOKEN_FLOAT_DATA           : return "TOKEN_FLOAT_DATA";
+       case TOKEN_TRUE                 : return "TOKEN_TRUE";
+       case TOKEN_FALSE                : return "TOKEN_FALSE";
+       case TOKEN_PRINT                : return "TOKEN_PRINT";
+       case TOKEN_REMOVE               : return "TOKEN_REMOVE";
+       case TOKEN_UPDATE               : return "TOKEN_UPDATE";
+       case TOKEN_NOT                  : return "TOKEN_NOT";
+       case TOKEN_OR                   : return "TOKEN_OR";
+       case TOKEN_AND                  : return "TOKEN_AND";
+       case TOKEN_ARROW                : return "TOKEN_ARROW";
+       case TOKEN_EQUALS               : return "TOKEN_EQUALS";
+       case TOKEN_LESS_THAN            : return "TOKEN_LESS_THAN";
+       case TOKEN_GREATER_THAN         : return "TOKEN_GREATER_THAN";
+       case TOKEN_LESS_THAN_EQUALS     : return "TOKEN_LESS_THAN_EQUALS";
+       case TOKEN_GREATER_THAN_EQUALS  : return "TOKEN_GREATER_THAN_EQUALS";
+       case TOKEN_ID                   : return "TOKEN_ID";
+       case TOKEN_EXIT                 : return "TOKEN_EXIT";
+       case TOKEN_END_OF_INPUT         : return "TOKEN_END_OF_INPUT";    
     }
     return "[!] ERROR : UNIDENTIFIED TOKEN : " + REQUIRED_TOKEN;
 }
 
+
+
 std::unordered_map <std::string , TOKEN_SET> KEYWORD_MAP =  {
-    {"insert"    , TOKEN_INSERT},
-    {"into"      , TOKEN_INTO},
-    {"value"     , TOKEN_VALUE},
-    {"delete"    , TOKEN_DELETE},
-    {"from"      , TOKEN_FROM},
-    {"search"    , TOKEN_SEARCH},
-    {"in"        , TOKEN_IN},
-    {"create"    , TOKEN_CREATE},
-    {"new"       , TOKEN_NEW},
-    {"database"  , TOKEN_DATABASE},
-    {"table"     , TOKEN_TABLE},
-    {"use"       , TOKEN_USE},
-    {"update"    , TOKEN_UPDATE},
-    {"where"     , TOKEN_WHERE},
-    {"with"      , TOKEN_WITH},
-    {"exit"      , TOKEN_EXIT},
-    {"INSERT"    , TOKEN_INSERT},
-    {"INTO"      , TOKEN_INTO},
-    {"VALUE"     , TOKEN_VALUE},
-    {"DELETE"    , TOKEN_DELETE},
-    {"FROM"      , TOKEN_FROM},
-    {"SEARCH"    , TOKEN_SEARCH},
-    {"IN"        , TOKEN_IN},
-    {"CREATE"    , TOKEN_CREATE},
-    {"NEW"       , TOKEN_NEW},
-    {"DATABASE"  , TOKEN_DATABASE},
-    {"TABLE"     , TOKEN_TABLE},
-    {"USE"       , TOKEN_USE},
-    {"UPDATE"    , TOKEN_UPDATE},
-    {"WHERE"     , TOKEN_WHERE},
-    {"WITH"      , TOKEN_WITH},
-    {"EXIT"      , TOKEN_EXIT},
-    
+    {"int" , TOKEN_INT},
+    {"float" , TOKEN_FLOAT},
+    {"string" , TOKEN_STRING},
+    {"char" , TOKEN_CHAR},
+    {"bool" , TOKEN_BOOL},
+    {"date" , TOKEN_DATE},
+    {"time" , TOKEN_TIME},
+    {"new"  , TOKEN_NEW},
+    {"add" , TOKEN_ADD},
+    {"print" , TOKEN_PRINT},
+    {"remove" , TOKEN_REMOVE},
+    {"update" , TOKEN_UPDATE},
+    {"exit" , TOKEN_EXIT},
+    {"true" , TOKEN_TRUE},
+    {"false" , TOKEN_FALSE}
 };
 
 class Lexer
@@ -260,7 +340,7 @@ class Lexer
         }
         advance(); // advancing the closing quotes
 
-        newToken->TOKEN_TYPE = TOKEN_STRING;
+        newToken->TOKEN_TYPE = TOKEN_STRING_DATA;
         newToken->VALUE = temporaryBuffer;
         return newToken;
     }
@@ -281,25 +361,31 @@ class Lexer
 
         newToken->TOKEN_TYPE = TOKEN_ID;
         newToken->VALUE = temporaryBuffer;
-        
+        // convert the search term to lower case before calling the if 
+        // check here to make it case insensitive
+        // or maybe dont make it case insensitive
         if (KEYWORD_MAP.find(newToken->VALUE) != KEYWORD_MAP.end())
             newToken->TOKEN_TYPE = KEYWORD_MAP[newToken->VALUE];
 
         return newToken;
     }
 
-    TOKEN * tokenizeINTEGER()
+    TOKEN * tokenizeNUMBER()
     {
         TOKEN * newToken = new TOKEN;
         std::string temporaryBuffer = "";
-        
-        while (isdigit(current))
+        bool decimal = false;
+        while (isdigit(current) || current == '.')
         {
+            if (current == '.')
+                decimal = true;
             temporaryBuffer.push_back(current);
             advance();
         }
+   
+        // 9. -> float WE NEED TO HANDLE THIS 
 
-        newToken->TOKEN_TYPE = TOKEN_INTEGER;
+        newToken->TOKEN_TYPE = decimal ? TOKEN_FLOAT_DATA : TOKEN_INT_DATA;
         newToken->VALUE = temporaryBuffer;
 
         return newToken;
@@ -318,11 +404,8 @@ class Lexer
     TOKEN * tokenizeSPECIAL (TOKEN_SET NEW_TOKEN_TYPE)
     {
         TOKEN * newToken = new TOKEN;
-        newToken->TOKEN_TYPE = NEW_TOKEN_TYPE;
-        if (newToken->TOKEN_TYPE == TOKEN_EQUALS)
-            newToken->VALUE = "==";
-        else 
-            newToken->VALUE = current;
+        newToken->TOKEN_TYPE = NEW_TOKEN_TYPE; 
+        newToken->VALUE = current;
         advance();
         return newToken;
     }
@@ -367,7 +450,7 @@ class Lexer
             if (isalpha(current) || current == '_')
                 TOKEN_LIST.push_back(tokenizeID());
             else if (isdigit(current))
-                TOKEN_LIST.push_back(tokenizeINTEGER());
+                TOKEN_LIST.push_back(tokenizeNUMBER());
             else
             {
             switch (current)
@@ -387,14 +470,35 @@ class Lexer
                     TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_COMMA));
                     break;
                 }
+                case '.':
+                {
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_DOT));
+                    break;
+                }
                 case '<':
                 {
-                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LESS_THAN));
+                    advance();
+                    if (current == '=') // <=
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LESS_THAN_EQUALS));
+                    else    
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LESS_THAN));
                     break;
                 }
                 case '>':
                 {
-                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_GREATER_THAN));
+                    advance();
+                    if (current == '=') // >=
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_GREATER_THAN_EQUALS));
+                    else 
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_GREATER_THAN));
+                    break;
+                }
+                case '=':
+                {
+                    advance();
+                    if (current != '=')
+                        return throwLexerError();
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_EQUALS));
                     break;
                 }
                 case '"':
@@ -404,14 +508,51 @@ class Lexer
                         return throwStringParsingError();
                     break;
                 }
-                
-                case '=':
+                case '[':
+                {
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LEFT_SQR_BRACKET));
+                    break;
+                }
+                case ']':
+                {
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_RIGHT_SQR_BRACKET));
+                    break;
+                }
+                case '!':
+                {
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_NOT));
+                    break;
+                }
+                case ':':
                 {
                     advance();
-                    if (current != '=')
+                    if (current != ':')
                         return throwLexerError();
-
-                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_EQUALS));
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_DOUBLE_COLON));
+                    break;
+                }
+                case '|':
+                {
+                    advance();
+                    if (current != '|')
+                        return throwLexerError();
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_OR));
+                    break;
+                }
+                case '&':
+                {
+                    advance();
+                    if (current != '&')
+                        return throwLexerError();
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_AND));
+                    break;
+                }
+                case '-':
+                {
+                    advance();
+                    if (current != '>')
+                        return throwLexerError();
+                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_ARROW));
                     break;
                 }
                 case '\0' : break;
@@ -538,53 +679,74 @@ class Parser
         return CONDITION_NODE;
     }
     
-    PARSER_STATUS parseCREATE()
+    PARSER_STATUS parseNEW()
     {
         /* 
-        SYNTAX FOR CREATE :
-        CREATE NEW DATABASE <DATABASE_NAME>
-        CREATE NEW TABLE <TABLE_NAME> 
+        new <table> :: <type> <name> , <type> <name>
         */
         
         EVALUATED_NODE = new AST_NODE;
-        proceed(TOKEN_CREATE);
+        EVALUATED_NODE->NODE_TYPE = NODE_NEW;
+
         proceed(TOKEN_NEW);
+        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+        proceed(TOKEN_DOUBLE_COLON);
 
-        if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DATABASE)
+        AST_NODE * buffer_pointer;
+        while (true)
         {
-            EVALUATED_NODE->NODE_TYPE =  NODE_CREATE_DATABASE;
-            proceed(TOKEN_DATABASE);
+            buffer_pointer = new AST_NODE;
+            switch(CURRENT_TOKEN->TOKEN_TYPE)
+            {
+                case TOKEN_INT : 
+                {
+                    proceed(TOKEN_INT);
+                    buffer_pointer->NODE_TYPE = NODE_INT;
+                    buffer_pointer->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+                    break;
+                }
+                case TOKEN_STRING: 
+                {
+                    proceed(TOKEN_STRING);
+                    buffer_pointer->NODE_TYPE = NODE_STRING;
+                    buffer_pointer->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+                    break;
+                }
+                case TOKEN_FLOAT : 
+                {
+                    proceed(TOKEN_FLOAT);
+                    buffer_pointer->NODE_TYPE = NODE_FLOAT;
+                    buffer_pointer->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+                    break;
+                }
+                default : throwSyntaxError();
+            }
+            EVALUATED_NODE->CHILDREN.push_back(buffer_pointer);
+
+        if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_COMMA)
+            break;  
         }
-        else if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_TABLE)
-        {
-            EVALUATED_NODE->NODE_TYPE = NODE_CREATE_TABLE;
-            proceed(TOKEN_TABLE);
-        }
-        else 
-            throwSyntaxError();
-        // ID : THIS_IS_AN_ID
-        // STRING : "THIS_IS_A_STRING"
-        // CREATE NEW TABLE T1
-        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE; 
         check(TOKEN_END_OF_INPUT);
         return PARSER_SUCCESS;
     }
 
-    PARSER_STATUS parseUSE()
-    {
-        /*
-        SYNTAX FOR USE : 
-        USE <DB_NAME>
-        */
-        EVALUATED_NODE = new AST_NODE;
-        EVALUATED_NODE->NODE_TYPE = NODE_USE;
-        proceed(TOKEN_USE);
-        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE; 
-        check(TOKEN_END_OF_INPUT);
-        return PARSER_SUCCESS;
-    }
 
-    PARSER_STATUS parseINSERT()
+// DEAL WITH THE USE THING
+    // PARSER_STATUS parseUSE()
+    // {
+    //     /*
+    //     SYNTAX FOR USE : 
+    //     USE <DB_NAME>
+    //     */
+    //     EVALUATED_NODE = new AST_NODE;
+    //     EVALUATED_NODE->NODE_TYPE = NODE_USE;
+    //     proceed(TOKEN_USE);
+    //     EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE; 
+    //     check(TOKEN_END_OF_INPUT);
+    //     return PARSER_SUCCESS;
+    // }
+
+    PARSER_STATUS parseADD()
     {
         /*
         SYNTAX FOR INSERT : 
@@ -620,7 +782,7 @@ class Parser
         return PARSER_SUCCESS;
     }
     
-    PARSER_STATUS parseSEARCH()
+    PARSER_STATUS parsePRINT()
     {
         /*
         SYNTAX FOR SEARCH : 
@@ -638,7 +800,7 @@ class Parser
         return PARSER_SUCCESS;
     }
     
-    PARSER_STATUS parseDELETE()
+    PARSER_STATUS parseREMOVE()
     {
         /*
         SYNTAX FOR DELETE : 
@@ -696,8 +858,7 @@ class Parser
     PARSER_STATUS parseEXIT()
     {
         /*
-        SYNTAX FOR EXIT : 
-        EXIT
+        exit
         */
         EVALUATED_NODE = new AST_NODE;
         EVALUATED_NODE->NODE_TYPE = NODE_EXIT;
@@ -725,13 +886,15 @@ class Parser
                 // INSIDE THE FUNCTION , WE FIRST NEED TO CALL THE 
                 // THROW SYNTAX ERROR FROM INSIDE THE FUNCTION 
                 // THEN WE NEED TO RETURN THE PARSE FAIL ENUM 
-                case TOKEN_CREATE : return parseCREATE();
-                case TOKEN_USE    : return parseUSE();
-                case TOKEN_INSERT : return parseINSERT();
-                case TOKEN_SEARCH : return parseSEARCH();
-                case TOKEN_DELETE : return parseDELETE();
+
+                // case TOKEN_USE    : return parseUSE();
+
+                case TOKEN_NEW    : return parseNEW();
+                case TOKEN_ADD    : return parseADD();
+                case TOKEN_PRINT  : return parsePRINT();
+                case TOKEN_REMOVE : return parseREMOVE();
                 case TOKEN_UPDATE : return parseUPDATE();
-                case TOKEN_EXIT   : return parseEXIT();
+                case TOKEN_EXIT   : return parseEXIT();                
                 default           : return throwSyntaxError();
             }
     }
@@ -758,6 +921,13 @@ class EvaluationWrapper
         // USING THE LEXER TO TOKENIZE THE INPUT BUFFER
         MAIN_LEXER->initialize(InputBuffer);
         LEXER_STATUS CURRENT_LEXER_STATUS =  MAIN_LEXER->tokenize();
+        std::vector<TOKEN *>  * temp = MAIN_LEXER->getTokenStream();
+        int count = 0;
+        for ( TOKEN * buffer:  *temp)
+        {
+            std::cout << ++count  << " " << buffer->VALUE << " " << tokenTypeToString(buffer->TOKEN_TYPE) << endl; 
+        }
+        return;
         // USING THE PARSER TO PARSE THE TOKEN_STREAM
         PARSER_STATUS CURRENT_PARSER_STATUS;
         if (CURRENT_LEXER_STATUS == LEXER_SUCCESS) // could make use of assert here to make things cleaner
