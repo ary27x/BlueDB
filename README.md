@@ -8,7 +8,9 @@ Future things todo and add :
 - write drivers that could basically convert a blueDB table to a mysql table , something on this line to make things interchangable between blueDB and mainstream database softwares
 
 
-Syntax TODO remaining
+
+
+Syntax TODO 
 
 1) variables and functions syntax 
 
