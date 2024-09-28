@@ -2,111 +2,21 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <chrono> // this is for the time thing
+#include <chrono> // the timer thing is not working
+
+// incldue comments using the ~ operator
+
+// currently the data type support is only for int , float and string types
+// add to the code such that the string support is extended for other 
+// data types as well 
+
 
 #define FAIL      "\e[0;31m"
 #define SUCCESS   "\e[0;32m"
 #define DEFAULT   "\e[0;37m"
-#define DB_PROMPT "blue_db~ :" // this is subject to change
-/*
-int
-float 
-string 
-char 
-bool
-date 
-time
-new 
-add
-print
-remove
-update
-*/
+#define DB_PROMPT "blue_db : " // this is subject to change
+std::string InputBuffer;  
 
-
-/*
-keywords : 
-int : 5 : int_data
-float  float_data
-string  string_data
-char  
-bool token_true token_false
-date 
-time
-
-
-
-new 
-:: 
-, 
-add 
-[ 
-]
-" "
-print
-remove
-update
-||
-&&
-->
-
-datatypes : 
-int , float , string , char , bool , date , time
-
-creating a table : 
--> new students :: int id , string name
-
-adding data to the table : 
--> add students :: [1 , "Aryan"] , [2 , "Joey"]
-
-printing data from the table : 
--> print students 
--> print students :: name = "Aryan" || id = 2
--> print students.name :: name = "Aryan" && id = 5
-
-remove : 
--> remove students 
--> remove students :: name = "Aryan" && id = 1
-
-update : 
-update students :: name = "Aryan" || id = 7 -> name = "Aryan Kumar " , id = 5
-
-exit
-
-
-*/
- 
-
-
-/*
-
-TEMPORARY WORKING SYNTAX DOCUMENTATION : 
-CRUD
-
-CREATE :
-CREATE NEW DATABASE <DB_NAME>
-CREATE NEW TABLE <TABLE_NAME> () // WORK HERE
-
-
-****** (WORK ON THIS)CREATE NEW TABLE T1 (INTEGER : ID , STRING DATA , BOOL IS_STUDENT)
-USE DATABASE
-
-INSERTION : 
-INSERT INTO <TABLE> VALUE (<ELEMENT1> , ... , <ELEMENTN>)
-
-READING : 
-SEARCH IN <TABLE> VALUE ()
-
-DELETE : 
-DELETE FROM <TABLE> VALUE ()
-
-UPDATE : 
-UPDATE <TABLE> WHERE (<CONDITION>) WITH 
-== < > 
-
-token exit 
-
-*/
 
 typedef enum
 {
@@ -151,7 +61,9 @@ typedef enum
     TOKEN_OR , 
     TOKEN_AND , 
     TOKEN_ARROW , 
+    TOKEN_EQUAL_TO, 
     TOKEN_EQUALS , 
+    TOKEN_NOT_EQUALS , 
     TOKEN_LESS_THAN , 
     TOKEN_GREATER_THAN,
     TOKEN_LESS_THAN_EQUALS, 
@@ -173,7 +85,9 @@ typedef enum
     NODE_NOT, 
     NODE_AND, 
     NODE_OR,
+    NODE_CONDITION, 
     NODE_CONDITION_EQUALS ,
+    NODE_CONDITION_NOT_EQUALS, 
     NODE_CONDITION_GREATER_THAN ,
     NODE_CONDITION_LESS_THAN ,
     NODE_CONDITION_LESS_THAN_EQUALS, 
@@ -190,10 +104,32 @@ struct AST_NODE
     NODE_SET NODE_TYPE;
     std::string * PAYLOAD;
     std::string * SUB_PAYLOAD;
-    std::vector<AST_NODE*> CHILDREN;
-    std::vector<AST_NODE*> UPDATE_CHILDREN;
-    
+    std::vector<std::string> DATA_LIST;
+    AST_NODE * CHILD;
+    std::vector<AST_NODE *> CHILDREN;
+    std::vector<AST_NODE *> UPDATE_CHILDREN;
+    std::vector<std::vector<AST_NODE *>> MULTI_DATA;
+    TOKEN_SET HELPER_TOKEN;
+    AST_NODE()
+    {
+        CHILD = nullptr; // to avoid garbage pointer issues
+    }
 };
+
+std::unordered_map <TOKEN_SET , NODE_SET> REL_SET = {
+    {TOKEN_EQUALS , NODE_CONDITION_EQUALS},
+    {TOKEN_NOT_EQUALS , NODE_CONDITION_NOT_EQUALS},
+    {TOKEN_LESS_THAN , NODE_CONDITION_LESS_THAN},
+    {TOKEN_LESS_THAN_EQUALS , NODE_CONDITION_LESS_THAN_EQUALS},
+    {TOKEN_GREATER_THAN , NODE_CONDITION_GREATER_THAN},
+    {TOKEN_GREATER_THAN_EQUALS , NODE_CONDITION_GREATER_THAN_EQUALS},
+};
+
+std::unordered_map <TOKEN_SET , std::string> LOG_SET = {
+    {TOKEN_AND , "&&"}, 
+    {TOKEN_OR , "||"}, 
+};
+
 
 std::string nodeTypeToString(NODE_SET REQUIRED_NODE)
 {
@@ -208,7 +144,9 @@ std::string nodeTypeToString(NODE_SET REQUIRED_NODE)
        case NODE_NOT                            : return "NODE_NOT";
        case NODE_AND                            : return "NODE_AND";
        case NODE_OR                             : return "NODE_OR";
+       case NODE_CONDITION                      : return "NODE_CONDITION";
        case NODE_CONDITION_EQUALS               : return "NODE_CONDITION_EQUALS";
+       case NODE_CONDITION_NOT_EQUALS           : return "NODE_CONDITION_NOT_EQUALS";
        case NODE_CONDITION_GREATER_THAN         : return "NODE_CONDITION_GREATER_THAN";
        case NODE_CONDITION_LESS_THAN            : return "NODE_CONDITION_LESS_THAN";
        case NODE_CONDITION_LESS_THAN_EQUALS     : return "NODE_CONDITION_LESS_THAN_EQUALS";
@@ -225,8 +163,8 @@ struct TOKEN
 {
     TOKEN_SET TOKEN_TYPE;
     std::string VALUE;
+    int position;
 };
-
 
 std::string tokenTypeToString(TOKEN_SET REQUIRED_TOKEN)
 {
@@ -260,7 +198,9 @@ std::string tokenTypeToString(TOKEN_SET REQUIRED_TOKEN)
        case TOKEN_OR                   : return "TOKEN_OR";
        case TOKEN_AND                  : return "TOKEN_AND";
        case TOKEN_ARROW                : return "TOKEN_ARROW";
+       case TOKEN_EQUAL_TO             : return "TOKEN_EQUAL_TO";
        case TOKEN_EQUALS               : return "TOKEN_EQUALS";
+       case TOKEN_NOT_EQUALS           : return "TOKEN_NOT_EQUALS";
        case TOKEN_LESS_THAN            : return "TOKEN_LESS_THAN";
        case TOKEN_GREATER_THAN         : return "TOKEN_GREATER_THAN";
        case TOKEN_LESS_THAN_EQUALS     : return "TOKEN_LESS_THAN_EQUALS";
@@ -271,8 +211,6 @@ std::string tokenTypeToString(TOKEN_SET REQUIRED_TOKEN)
     }
     return "[!] ERROR : UNIDENTIFIED TOKEN : " + REQUIRED_TOKEN;
 }
-
-
 
 std::unordered_map <std::string , TOKEN_SET> KEYWORD_MAP =  {
     {"int" , TOKEN_INT},
@@ -327,6 +265,7 @@ class Lexer
     {
         advance(); // advancing the opening quotes
         TOKEN * newToken = new TOKEN;
+        newToken->position = cursor;
         std::string temporaryBuffer = "";
         while (current != '"')
         {
@@ -348,6 +287,7 @@ class Lexer
     TOKEN * tokenizeID()
     {
         TOKEN * newToken = new TOKEN;
+        newToken->position = cursor;
         std::string temporaryBuffer = "";
         
         temporaryBuffer.push_back(current);
@@ -361,9 +301,6 @@ class Lexer
 
         newToken->TOKEN_TYPE = TOKEN_ID;
         newToken->VALUE = temporaryBuffer;
-        // convert the search term to lower case before calling the if 
-        // check here to make it case insensitive
-        // or maybe dont make it case insensitive
         if (KEYWORD_MAP.find(newToken->VALUE) != KEYWORD_MAP.end())
             newToken->TOKEN_TYPE = KEYWORD_MAP[newToken->VALUE];
 
@@ -373,6 +310,7 @@ class Lexer
     TOKEN * tokenizeNUMBER()
     {
         TOKEN * newToken = new TOKEN;
+        newToken->position = cursor;
         std::string temporaryBuffer = "";
         bool decimal = false;
         while (isdigit(current) || current == '.')
@@ -404,6 +342,7 @@ class Lexer
     TOKEN * tokenizeSPECIAL (TOKEN_SET NEW_TOKEN_TYPE)
     {
         TOKEN * newToken = new TOKEN;
+        newToken->position = cursor;
         newToken->TOKEN_TYPE = NEW_TOKEN_TYPE; 
         newToken->VALUE = current;
         advance();
@@ -442,6 +381,13 @@ class Lexer
         stringParsingError = false;
     }
 
+    char seek (int offset)
+    {
+        if (cursor + offset >= length)
+            return '\0';
+        else 
+            return LocalInputBuffer[cursor + offset];
+    }
     LEXER_STATUS tokenize()
     {
         while (current)
@@ -475,30 +421,41 @@ class Lexer
                     TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_DOT));
                     break;
                 }
+
+                // replace all the advance functions with the seek function 
+
                 case '<':
                 {
-                    advance();
-                    if (current == '=') // <=
+                    if (seek(1) == '=') // <=
+                    {
+                        advance();
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LESS_THAN_EQUALS));
+                    }
                     else    
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LESS_THAN));
                     break;
                 }
                 case '>':
                 {
-                    advance();
-                    if (current == '=') // >=
+                    if (seek(1) == '=') // >=
+                    {
+                        advance();
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_GREATER_THAN_EQUALS));
+                    }
                     else 
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_GREATER_THAN));
                     break;
                 }
+
                 case '=':
                 {
-                    advance();
-                    if (current != '=')
-                        return throwLexerError();
-                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_EQUALS));
+                    if (seek(1) == '=')
+                    {
+                        advance();
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_EQUALS));
+                    }
+                    else
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_EQUAL_TO));
                     break;
                 }
                 case '"':
@@ -520,7 +477,13 @@ class Lexer
                 }
                 case '!':
                 {
-                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_NOT));
+                    if (seek(1) == '=')
+                    {
+                        advance();
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_NOT_EQUALS));
+                    }
+                    else
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_NOT));
                     break;
                 }
                 case ':':
@@ -561,8 +524,6 @@ class Lexer
             }
             }
         }
-
-        // displayAllTokens();
         TOKEN * END_TOKEN = new TOKEN;
         END_TOKEN->TOKEN_TYPE = TOKEN_END_OF_INPUT;
         TOKEN_LIST.push_back(END_TOKEN);
@@ -580,10 +541,35 @@ class Parser
     bool syntaxError;
     AST_NODE * EVALUATED_NODE;
 
+    PARSER_STATUS throwVerboseSyntaxError(TOKEN_SET REQUIRED_TOKEN)
+    {
+        std::cout << FAIL << "[!] SYNTAX ERROR : Unexpected Token : " << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << " , Expected Token : " << tokenTypeToString(REQUIRED_TOKEN) << DEFAULT << std::endl;
+        int positionCounter = 0;
+        for (char currentCharacter : InputBuffer)
+        {
+            if (positionCounter >= CURRENT_TOKEN->position && positionCounter <= CURRENT_TOKEN->position + CURRENT_TOKEN->VALUE.length())
+                std::cout << FAIL << currentCharacter << DEFAULT ;
+            else
+                std::cout << currentCharacter;
+            positionCounter++;
+        }
+        exit(0); // change the behaviour of this 
+        return PARSER_FAIL;
+    }
+
     PARSER_STATUS throwSyntaxError()
     {
         std::cout << FAIL << "[!] SYNTAX ERROR : UNEXPECTED TOKEN : " << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << DEFAULT << std::endl;
-        exit(0); // change the behaviour of this 
+        int positionCounter = 0;
+        for (char currentCharacter : InputBuffer)
+        {
+            if (positionCounter >= CURRENT_TOKEN->position && positionCounter <= CURRENT_TOKEN->position + CURRENT_TOKEN->VALUE.length())
+                std::cout << FAIL << currentCharacter << DEFAULT ;
+            else
+                std::cout << currentCharacter;
+            positionCounter++;
+        }
+        exit(0); // also change this behaviour
         return PARSER_FAIL;
     }
 
@@ -597,7 +583,7 @@ class Parser
     {
         if (CURRENT_TOKEN->TOKEN_TYPE != REQUIRED_TOKEN)
         {
-            throwSyntaxError();            
+            throwVerboseSyntaxError(REQUIRED_TOKEN);            
             syntaxError = true; // this 
             return CURRENT_TOKEN;
         }
@@ -613,69 +599,73 @@ class Parser
         return bufferPointer;
     }
     
-    AST_NODE * parseCHILDREN()
-    {
-        AST_NODE * NEW_CHILD_NODE = new AST_NODE;
-        NEW_CHILD_NODE->NODE_TYPE = (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_INTEGER) ? NODE_INTEGER : NODE_STRING;
-        NEW_CHILD_NODE->PAYLOAD = &CURRENT_TOKEN->VALUE;
-
-        if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_INTEGER)
-            proceed(TOKEN_INTEGER);
-        else    
-            proceed(TOKEN_STRING);
-
-        return NEW_CHILD_NODE;
-    }
-
-    
-
     AST_NODE * parseCONDITION()
     {
-        /*
-        THIS IS THE SYNTAX OF PARSING CONDITION 
-        ( ID REL_OP INT/STRING )
-        WE WILL PUT THE ID IN THE PAYLOAD 
-        WE WILL PUT THE INT/STRING IN THE SUBPAYLOAD
-        (ENROLLMENT_NUMBER == 56)
-        (MARKS < 60)
-        (EMPLOYEE_NAME == "ARYAN")
-        */
-        proceed(TOKEN_LEFT_PAREN);
         AST_NODE * CONDITION_NODE = new AST_NODE;
+        CONDITION_NODE->NODE_TYPE = NODE_CONDITION;
 
-        CONDITION_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
-
-        switch(CURRENT_TOKEN->TOKEN_TYPE)
+        AST_NODE * buffer_pointer;
+        while (true)
         {
-            case TOKEN_LESS_THAN: 
+            std::string construct = "";
+            buffer_pointer = new AST_NODE;
+            construct += checkAndProceed(TOKEN_ID)->VALUE;
+            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
             {
-                CONDITION_NODE->NODE_TYPE = NODE_CONDITION_LESS_THAN; 
-                proceed(TOKEN_LESS_THAN);
-                break;
+                proceed(TOKEN_DOT);
+                construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
             }
-            case TOKEN_GREATER_THAN: 
-            {
-                CONDITION_NODE->NODE_TYPE = NODE_CONDITION_GREATER_THAN; 
-                proceed(TOKEN_GREATER_THAN);
-                break;
-            }
-            case TOKEN_EQUALS: 
-            {
-                CONDITION_NODE->NODE_TYPE = NODE_CONDITION_EQUALS; 
-                proceed(TOKEN_EQUALS);
-                break;
-            }
-            default : throwSyntaxError();
-        }
-        
-        if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_INTEGER)
-            CONDITION_NODE->SUB_PAYLOAD = &checkAndProceed(TOKEN_INTEGER)->VALUE;
-        else if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_STRING)
-            CONDITION_NODE->SUB_PAYLOAD = &checkAndProceed(TOKEN_STRING)->VALUE;
-        else 
-            throwSyntaxError();
+            buffer_pointer->PAYLOAD = &construct;
 
-        proceed(TOKEN_RIGHT_PAREN);
+            if (REL_SET.find(CURRENT_TOKEN->TOKEN_TYPE) == REL_SET.end())
+                throwSyntaxError();
+            buffer_pointer->NODE_TYPE = REL_SET[CURRENT_TOKEN->TOKEN_TYPE];
+            proceed(CURRENT_TOKEN->TOKEN_TYPE);
+            switch(CURRENT_TOKEN->TOKEN_TYPE)
+            {
+                case TOKEN_ID :
+                {
+                    std::string construct;
+                    buffer_pointer->HELPER_TOKEN = TOKEN_ID;
+                    construct += checkAndProceed(TOKEN_ID)->VALUE;
+                    if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
+                    {
+                        proceed(TOKEN_DOT);
+                        construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+                    }
+                    buffer_pointer->SUB_PAYLOAD = &construct;
+                    break;
+                } 
+                case TOKEN_INT_DATA : 
+                {
+                    buffer_pointer->HELPER_TOKEN = TOKEN_INT_DATA;
+                    buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_INT_DATA)->VALUE;
+                    break;
+                }
+                case TOKEN_FLOAT_DATA : 
+                {
+                    buffer_pointer->HELPER_TOKEN = TOKEN_FLOAT_DATA;
+                    buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_FLOAT_DATA)->VALUE;
+                    break;
+                }
+                case TOKEN_STRING_DATA :
+                {
+                    buffer_pointer->HELPER_TOKEN = TOKEN_STRING_DATA;
+                    buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_STRING_DATA)->VALUE;
+                    break;
+                } 
+                default : throwSyntaxError();
+            }
+            CONDITION_NODE->CHILDREN.push_back(buffer_pointer);
+            if (LOG_SET.find(CURRENT_TOKEN->TOKEN_TYPE) == LOG_SET.end())
+                break;
+            else
+            {
+                CONDITION_NODE->DATA_LIST.push_back(LOG_SET[CURRENT_TOKEN->TOKEN_TYPE]);
+                proceed(CURRENT_TOKEN->TOKEN_TYPE);
+            }
+        }
+
         return CONDITION_NODE;
     }
     
@@ -683,8 +673,9 @@ class Parser
     {
         /* 
         new <table> :: <type> <name> , <type> <name>
+        <table> would go in the ->payload
+        <columns> would go in the ->children
         */
-        
         EVALUATED_NODE = new AST_NODE;
         EVALUATED_NODE->NODE_TYPE = NODE_NEW;
 
@@ -719,140 +710,250 @@ class Parser
                     buffer_pointer->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
                     break;
                 }
-                default : throwSyntaxError();
+                default : return throwSyntaxError();
             }
             EVALUATED_NODE->CHILDREN.push_back(buffer_pointer);
 
         if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_COMMA)
-            break;  
+            break; 
+        else
+            proceed(TOKEN_COMMA); 
         }
         check(TOKEN_END_OF_INPUT);
         return PARSER_SUCCESS;
     }
-
-
-// DEAL WITH THE USE THING
-    // PARSER_STATUS parseUSE()
-    // {
-    //     /*
-    //     SYNTAX FOR USE : 
-    //     USE <DB_NAME>
-    //     */
-    //     EVALUATED_NODE = new AST_NODE;
-    //     EVALUATED_NODE->NODE_TYPE = NODE_USE;
-    //     proceed(TOKEN_USE);
-    //     EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE; 
-    //     check(TOKEN_END_OF_INPUT);
-    //     return PARSER_SUCCESS;
-    // }
 
     PARSER_STATUS parseADD()
     {
         /*
-        SYNTAX FOR INSERT : 
-        INSERT INTO <TABLE_NAME> VALUE (....)
+        add <table_name> :: <row1> , <row2> , .... , <rowN>
+        <rowN> : [<value1> , <value2>]
         */
-        EVALUATED_NODE = new AST_NODE;
-        EVALUATED_NODE->NODE_TYPE = NODE_INSERT;
-        proceed(TOKEN_INSERT);
-        proceed(TOKEN_INTO);
-        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
-        proceed(TOKEN_VALUE);
 
-        proceed(TOKEN_LEFT_PAREN);
+        EVALUATED_NODE = new AST_NODE;
+        EVALUATED_NODE->NODE_TYPE = NODE_ADD;
+        proceed(TOKEN_ADD);
+        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+        proceed(TOKEN_DOUBLE_COLON);
         while (true)
         {
-            // CHECK FOR EMPTY INSERTS MAYBE IN THE GENERATOR?
-            // or maybe we could insert null 
-            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_END_OF_INPUT )
-                throwSyntaxError();
-            if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_INTEGER && CURRENT_TOKEN->TOKEN_TYPE != TOKEN_STRING)
-                throwSyntaxError();
-            EVALUATED_NODE->CHILDREN.push_back(parseCHILDREN());
-            
-            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_RIGHT_PAREN)
+            std::vector<AST_NODE *> buffer_vector;
+            proceed(TOKEN_LEFT_SQR_BRACKET);
+            while (true)
             {
-                proceed(TOKEN_RIGHT_PAREN);
-                break;
+                AST_NODE * buffer_ast_node;
+                buffer_ast_node = new AST_NODE;
+                switch (CURRENT_TOKEN->TOKEN_TYPE)
+                {
+                    case TOKEN_INT_DATA:
+                    {
+                        buffer_ast_node->NODE_TYPE = NODE_INT;
+                        buffer_ast_node->PAYLOAD = &checkAndProceed(TOKEN_INT_DATA)->VALUE;
+                        break;
+                    }
+                    case TOKEN_FLOAT_DATA:
+                    {
+                        buffer_ast_node->NODE_TYPE = NODE_FLOAT;
+                        buffer_ast_node->PAYLOAD = &checkAndProceed(TOKEN_FLOAT_DATA)->VALUE;
+                        break;
+                    }
+                    case TOKEN_STRING_DATA:
+                    {
+                        buffer_ast_node->NODE_TYPE = NODE_STRING;
+                        buffer_ast_node->PAYLOAD = &checkAndProceed(TOKEN_STRING_DATA)->VALUE;
+                        break;
+                    }
+                    default : return throwSyntaxError();
+                }
+                buffer_vector.push_back(buffer_ast_node);
+                if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_COMMA)
+                    break;
+                else 
+                    proceed(TOKEN_COMMA);
             }
-            proceed(TOKEN_COMMA);
+            proceed(TOKEN_RIGHT_SQR_BRACKET);
+            EVALUATED_NODE->MULTI_DATA.push_back(buffer_vector);
+            if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_COMMA)
+                break;
+            else    
+                proceed(TOKEN_COMMA);
         }
-
         check(TOKEN_END_OF_INPUT);
         return PARSER_SUCCESS;
     }
-    
+
     PARSER_STATUS parsePRINT()
     {
-        /*
-        SYNTAX FOR SEARCH : 
-        SEARCH IN <T_NAME> WHERE (CONDITION)
-        T_NAME WOULD BE IN THE PAYLOAD 
-        */
+       // print students :: name = "aryan" || id = 9
         EVALUATED_NODE = new AST_NODE;
-        EVALUATED_NODE->NODE_TYPE = NODE_SEARCH;
-        proceed(TOKEN_SEARCH);
-        proceed(TOKEN_IN);
-        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
-        proceed(TOKEN_WHERE);
-        EVALUATED_NODE->CHILDREN.push_back(parseCONDITION());
-        check(TOKEN_END_OF_INPUT);
-        return PARSER_SUCCESS;
+        EVALUATED_NODE->NODE_TYPE = NODE_PRINT;
+        proceed(TOKEN_PRINT);
+
+        while (true)
+        {
+            std::string construct = checkAndProceed(TOKEN_ID)->VALUE;
+            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
+            {
+                proceed(TOKEN_DOT);
+                construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+            }
+            EVALUATED_NODE->DATA_LIST.push_back(construct);
+
+            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_COMMA)
+            {
+                proceed(TOKEN_COMMA);
+                continue;
+            }
+            else 
+                break;
+        }
+        switch(CURRENT_TOKEN->TOKEN_TYPE)
+        {
+            case TOKEN_END_OF_INPUT: return PARSER_SUCCESS;
+            case TOKEN_DOUBLE_COLON: 
+            {
+                proceed(TOKEN_DOUBLE_COLON);
+                EVALUATED_NODE->CHILD = parseCONDITION();
+                check(TOKEN_END_OF_INPUT);
+                return PARSER_SUCCESS;
+            }
+            default : return throwSyntaxError();
+        }
     }
     
     PARSER_STATUS parseREMOVE()
     {
         /*
-        SYNTAX FOR DELETE : 
-        DELETE FROM <T_NAME> WHERE (CONDITION)
-        T_NAME WOULD BE IN THE PAYLOAD 
+        remove students 
+        remove students :: name = "aryan"
+        remove studnets :: students.name = "aryan"
         */
         EVALUATED_NODE = new AST_NODE;
-        EVALUATED_NODE->NODE_TYPE = NODE_DELETE;
-        proceed(TOKEN_DELETE);
-        proceed(TOKEN_FROM);
+        EVALUATED_NODE->NODE_TYPE = NODE_REMOVE;
+        proceed(TOKEN_REMOVE);
+
         EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
-        proceed(TOKEN_WHERE);
-        EVALUATED_NODE->CHILDREN.push_back(parseCONDITION());
-        check(TOKEN_END_OF_INPUT);
-        return PARSER_SUCCESS;
+
+        switch(CURRENT_TOKEN->TOKEN_TYPE)
+        {
+            case TOKEN_END_OF_INPUT : return PARSER_SUCCESS;
+            case TOKEN_DOUBLE_COLON : 
+            {
+                proceed(TOKEN_DOUBLE_COLON);
+                EVALUATED_NODE->CHILD = parseCONDITION();
+                check(TOKEN_END_OF_INPUT);
+                return PARSER_SUCCESS;
+            }
+            default : return throwSyntaxError();
+        }
     }
    
+    void parseUPDATE_VALUES(AST_NODE *& ROOT_NODE)
+    {
+        // id = <value>
+        // <value> : id | string data | int data | float data
+        AST_NODE * buffer_pointer;
+        while (true)
+        {
+            buffer_pointer = new AST_NODE;
+            std::string construct = "";
+            construct += checkAndProceed(TOKEN_ID)->VALUE;
+            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
+            {
+                proceed(TOKEN_DOT);
+                construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+            }
+            buffer_pointer->PAYLOAD = &construct;
+            proceed(TOKEN_EQUAL_TO);
+            switch(CURRENT_TOKEN->TOKEN_TYPE)
+            {
+                case TOKEN_ID :
+                {
+                    buffer_pointer->HELPER_TOKEN = TOKEN_ID;
+                    std::string construct;
+                    construct += checkAndProceed(TOKEN_ID)->VALUE;
+                    if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
+                    {
+                        proceed(TOKEN_DOT);
+                        construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+                    }
+                    buffer_pointer->SUB_PAYLOAD = &construct;
+                    break;
+                } 
+                case TOKEN_INT_DATA : 
+                {
+                    buffer_pointer->HELPER_TOKEN = TOKEN_INT_DATA;
+                    buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_INT_DATA)->VALUE;
+                    break;
+                }
+                case TOKEN_FLOAT_DATA : 
+                {
+                    buffer_pointer->HELPER_TOKEN = TOKEN_FLOAT_DATA;
+                    buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_FLOAT_DATA)->VALUE;
+                    break;
+                }
+                case TOKEN_STRING_DATA :
+                {
+                    buffer_pointer->HELPER_TOKEN = TOKEN_STRING_DATA;
+                    buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_STRING_DATA)->VALUE;
+                    break;
+                } 
+                default : throwSyntaxError();
+            }
+            ROOT_NODE->CHILDREN.push_back(buffer_pointer);
+            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_COMMA)
+                proceed(TOKEN_COMMA);
+            else
+                break;
+        }
+    }
+
     PARSER_STATUS parseUPDATE()
     {
         /*
-        SYNTAX FOR UPDATE : 
-        UPDATE <TNAME> WHERE (<CONDITION>) WITH (V1 , V2 ...)
-        TO GET THE CONDITION NODE FROM THE NODE_UPDATE , ACCESS :
-            CURRENT_NODE->CHILDREN[0];
-        <CONDITION> : (ID REL-OP INT / STRING)
-        THE VALUES (V1 , V2 .. VN ) WOULD BE PUSHED INTO THE UPDATE_CHILDREN VECTOR
+        consider the two statements 
+        
+        1) update students :: name == "aryan" && id = 7 -> name = "aryan kumar"
+        this would update all the records-> name to aryan kumar , where the name 
+        is aryan and id = 7
+
+        2) updating all the element in the table : 
+        update students -> name = "aryan kumar"
+        this would unconditionally update all the elements in the table
+        
+        update students :: name == "aryan" || id < 5 -> name = "aryan kumar" , id = 8
+        update students -> name = "aryan kumar"
+
+        the name of the table would in the ->payload
+        the condition would be int the child node
+        the update values would in the children vector
         */
 
-       EVALUATED_NODE = new AST_NODE;
-       EVALUATED_NODE->NODE_TYPE = NODE_UPDATE;
-       proceed(TOKEN_UPDATE);
-       EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
-       proceed(TOKEN_WHERE);
-       EVALUATED_NODE->CHILDREN.push_back(parseCONDITION());
-       proceed(TOKEN_WITH);
-       proceed(TOKEN_LEFT_PAREN);
-       while (true)
-       {
-            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_END_OF_INPUT )
-                throwSyntaxError();
-            if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_INTEGER && CURRENT_TOKEN->TOKEN_TYPE != TOKEN_STRING)
-                throwSyntaxError();
-            EVALUATED_NODE->UPDATE_CHILDREN.push_back(parseCHILDREN());
-            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_RIGHT_PAREN)
+        EVALUATED_NODE = new AST_NODE;
+        EVALUATED_NODE->NODE_TYPE = NODE_UPDATE;
+        proceed(TOKEN_UPDATE);
+        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+
+        switch (CURRENT_TOKEN->TOKEN_TYPE)
+        {
+            case TOKEN_DOUBLE_COLON : 
             {
-                proceed(TOKEN_RIGHT_PAREN);
+                proceed(TOKEN_DOUBLE_COLON);
+                EVALUATED_NODE->CHILD = parseCONDITION();
+                proceed(TOKEN_ARROW);
+                parseUPDATE_VALUES(EVALUATED_NODE);
                 break;
             }
-            proceed(TOKEN_COMMA);
-       }
-       check(TOKEN_END_OF_INPUT);
-       return PARSER_SUCCESS;
+            case TOKEN_ARROW : 
+            {
+                proceed(TOKEN_ARROW);
+                parseUPDATE_VALUES(EVALUATED_NODE);
+                break;
+            }
+            default : return throwSyntaxError();
+        }
+        check(TOKEN_END_OF_INPUT);
+        return PARSER_SUCCESS;
     }
 
     PARSER_STATUS parseEXIT()
@@ -882,13 +983,6 @@ class Parser
     {
             switch (CURRENT_TOKEN->TOKEN_TYPE)
             {
-                // FOR EVERY FUNCTION , IF THERE IS A SYNTAX ERROR
-                // INSIDE THE FUNCTION , WE FIRST NEED TO CALL THE 
-                // THROW SYNTAX ERROR FROM INSIDE THE FUNCTION 
-                // THEN WE NEED TO RETURN THE PARSE FAIL ENUM 
-
-                // case TOKEN_USE    : return parseUSE();
-
                 case TOKEN_NEW    : return parseNEW();
                 case TOKEN_ADD    : return parseADD();
                 case TOKEN_PRINT  : return parsePRINT();
@@ -922,12 +1016,7 @@ class EvaluationWrapper
         MAIN_LEXER->initialize(InputBuffer);
         LEXER_STATUS CURRENT_LEXER_STATUS =  MAIN_LEXER->tokenize();
         std::vector<TOKEN *>  * temp = MAIN_LEXER->getTokenStream();
-        int count = 0;
-        for ( TOKEN * buffer:  *temp)
-        {
-            std::cout << ++count  << " " << buffer->VALUE << " " << tokenTypeToString(buffer->TOKEN_TYPE) << endl; 
-        }
-        return;
+        
         // USING THE PARSER TO PARSE THE TOKEN_STREAM
         PARSER_STATUS CURRENT_PARSER_STATUS;
         if (CURRENT_LEXER_STATUS == LEXER_SUCCESS) // could make use of assert here to make things cleaner
@@ -949,7 +1038,6 @@ class EvaluationWrapper
 int main()
 {
     system("cls"); 
-    std::string InputBuffer;  
     EvaluationWrapper * main_io = new EvaluationWrapper();
     while (true)
     {
