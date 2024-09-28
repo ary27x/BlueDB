@@ -10,12 +10,14 @@
 // add to the code such that the string support is extended for other 
 // data types as well 
 
+// add the ability to sort the results by ascending or descending order
 
 #define FAIL      "\e[0;31m"
 #define SUCCESS   "\e[0;32m"
 #define DEFAULT   "\e[0;37m"
 #define DB_PROMPT "blue_db : " // this is subject to change
 std::string InputBuffer;  
+
 
 
 typedef enum
