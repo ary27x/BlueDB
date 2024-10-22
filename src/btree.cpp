@@ -195,6 +195,36 @@ class BTree
             this->root = new_root;
         }
     }
+
+    bool search (tree_type value)
+    {
+        BTreeNode<DataType> * current_node = this->root;
+        while (current_node != nullptr)
+        {
+        bool leafNode = current_node->leafNode;
+        int jump_to_child;
+        for (int key_itr = 0 ; key_itr < current_node->key_count ; key_itr++)
+        {
+            tree_type current_value = current_node->keys[key_itr];
+            jump_to_child = current_node->key_count;
+            bool skip = false;
+            if (current_value == value)
+                return true;
+            if (value < current_value)
+            {
+                if (leafNode)
+                    return false;
+                else 
+                {
+                    jump_to_child = key_itr;
+                    break;
+                }
+            }
+        }
+            current_node = current_node->children[jump_to_child];
+        }
+        return false;
+    }
     
 
 };
@@ -202,7 +232,7 @@ class BTree
 int main()
 {
     int order;
-    std::cout << "Enter the order of b tree : " << std::endl;
+    std::cout << "Enter the order of B Tree : " << std::endl;
     std::cin >> order;
 
 
@@ -210,12 +240,11 @@ int main()
     while (true)
     {
         int choice;
-        // std::cout << "1) enter a value : " << std::endl;
-        // std::cout << "2) display the tree : " << std::endl;
-        // std::cin >> choice;
-        Tree->display();
-
-        choice = 1;
+         std::cout << "1) enter a value : " << std::endl;
+         std::cout << "2) search the tree : " << std::endl;
+         std::cin >> choice;
+        // Tree->display();
+        // choice = 1;
         if (choice == 1)
         {
             tree_type value;
@@ -224,7 +253,18 @@ int main()
             Tree->insert(value);
         }
         else    
+        {
+            std::cout << "Enter the value to search for in the tree : " << std::endl;
+            tree_type value;
+            std::cin >> value;
+            if (Tree->search(value))
+                std::cout << "The value was found in the btree ! " << std::endl;
+            else 
+                std::cout << "The value was not found in the btree" << std::endl;
+        }
+            std::cout << "--------------------";
             Tree->display();
+            std::cout << "********************";
     }
     return 0;
 }
