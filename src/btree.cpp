@@ -1,6 +1,8 @@
 #include <iostream>
 #include <queue> // write own version of queue 
 #include <string>
+#include <cmath>
+#include <utility>
 #define tree_type float
 using namespace std;
 /*
@@ -21,6 +23,7 @@ class BTreeNode
     public:
         DataType * keys;
         BTreeNode<DataType> ** children;
+        BTreeNode<DataType> * parent;
         bool leafNode;
         int order;
         int key_count;
@@ -30,6 +33,7 @@ class BTreeNode
         this->children = new BTreeNode<DataType> * [order + 1];
         for (int child_itr = 0 ; child_itr < order + 1 ; child_itr++)
             this->children[child_itr] = nullptr;
+        this->parent = nullptr;
         this->leafNode = true; 
         this->order = order;
         this->key_count = 0;
@@ -39,6 +43,10 @@ class BTreeNode
         this->leafNode = leafNodeStatus;
         return;
     }
+    bool isRoot()
+    {
+        return !this->parent ? true : false;
+    }
 
     
 
@@ -46,6 +54,7 @@ class BTreeNode
     {
         BTreeNode<DataType> * new_node = new BTreeNode<DataType>(this->order);
         new_node->setLeafNode(this->leafNode);
+        new_node->parent = this->parent;
 
         int medianIndex = this->order / 2;
         DataType medianValue = this->keys[medianIndex];
@@ -132,11 +141,12 @@ template <typename DataType>
 class BTree
 {
     private:
-        BTreeNode<DataType> * root;
         int order;
         int height;
+        int min_keys;
+        int max_keys;
 
-    void renderKeys(BTreeNode<DataType> * current_node , std::queue<BTreeNode<DataType> *>& auxiliary_queue)
+    void renderKeys(BTreeNode<DataType> *& current_node , std::queue<BTreeNode<DataType> *>& auxiliary_queue)
     {
         for (int itr = 0 ; itr < current_node->key_count ; itr++)
         {
@@ -156,17 +166,22 @@ class BTree
             this->renderKeys(main_queue.front() , auxiliary_queue);
             main_queue.pop();
         }
+        
         std::cout << std::endl;
         if (!auxiliary_queue.empty())
             renderQueue(auxiliary_queue);
     }
 
     public:
+        BTreeNode<DataType> * root;
+
     BTree<DataType>(int order)
     {
         this->order = order;
         this->root = new BTreeNode<DataType>(order);
         this->height = 1;
+        this->max_keys = this->order - 1; 
+        this->min_keys = ceil((float)this->order / 2) - 1;
     }
     void display()
     {
@@ -191,60 +206,248 @@ class BTree
             new_root->children[1] = new_sibling_node;
             new_root->keys[new_root->key_count++] = medianValue;
 
+            this->root->parent = new_root;
+            new_sibling_node->parent = new_root;
+
             this->height++;
             this->root = new_root;
         }
     }
-
-    bool search (tree_type value)
+ 
+    int left_sibling_key_count (BTreeNode<DataType> * current)
     {
-        BTreeNode<DataType> * current_node = this->root;
-        while (current_node != nullptr)
+        std::cout << "this is the current : " << current << std::endl;
+        std::cout << "this is the & thing : " << &current << std::endl;
+        // std::cout << "this is the final thing : " << *current << std::endl;
+        if (!current->parent || current->parent->children[0] == current) return 0;
+        for (int itr = 0 ; itr <= current->parent->key_count ; itr++)
         {
-        bool leafNode = current_node->leafNode;
-        int jump_to_child;
-        for (int key_itr = 0 ; key_itr < current_node->key_count ; key_itr++)
+            std::cout << "parent child : " << current->parent->children[itr] << std::endl;
+            std::cout << "&parent child : " << &current->parent->children[itr] << std::endl;
+        }
+        for (int itr = 0 ; itr < current->parent->key_count ; itr++)
+            if (current->parent->children[itr + 1] == current)
+                return current->parent->children[itr]->key_count;
+        return -1;
+    }
+
+    int right_sibling_key_count (BTreeNode<DataType> *& current)
+    {
+        if (!current->parent || current->parent->children[current->parent->key_count] == current) return 0;
+        for (int itr = current->parent->key_count ; itr > 0 ; itr--)
+            if (current->parent->children[itr - 1] == current)
+                return current->parent->children[itr]->key_count;
+        return 0;
+    }
+
+    int predecessor_key_count(BTreeNode<DataType> *& current , int position)
+    {
+        BTreeNode<DataType> * predecessor = current->children[position];
+        if (!predecessor) return 0;
+        while (predecessor->children[predecessor->key_count])
+            predecessor = predecessor->children[predecessor->key_count];
+        return predecessor->key_count;
+    }
+    int successor_key_count(BTreeNode<DataType> *& current , int position)
+    {
+        BTreeNode<DataType> * successor = current->children[position + 1];
+        while (successor->children[0])
+            successor = successor->children[0];
+        return successor->key_count;
+    }
+
+    BTreeNode<DataType> * get_predecessor(BTreeNode<DataType> *& current , int position)
+    {
+        BTreeNode<DataType> * predecessor = current->children[position];
+        while (predecessor->children[predecessor->key_count])
+            predecessor = predecessor->children[predecessor->key_count];
+        return predecessor;
+    }
+
+    BTreeNode<DataType> * get_successor(BTreeNode<DataType> *& current , int position)
+    {
+        BTreeNode<DataType> * successor = current->children[position + 1];
+        while (successor->children[0])
+            successor = successor->children[0];
+        return successor;
+    }
+
+
+    int get_position (BTreeNode <DataType> *& current)
+    {
+        for (int itr = 0 ; itr <= current->parent->key_count ; itr++)
+            if (current->parent->children[itr] == current)
+                return itr;
+    }
+
+    void borrow_left (BTreeNode <DataType> *& current)
+    {
+        int position = get_position(current);
+        current->insert(current->parent->keys[position - 1]);
+        BTreeNode <DataType> * left_sibling = current->parent->children[position - 1];
+        current->parent->keys[position - 1] = left_sibling->keys[left_sibling->key_count - 1];
+        left_sibling->key_count--;
+    }
+    void borrow_right (BTreeNode <DataType> *& current)
+    {
+        int position = get_position(current);
+        current->insert(current->parent->keys[position]);
+        BTreeNode <DataType> * right_sibling = current->parent->children[position + 1];
+        current->parent->keys[position] = right_sibling->keys[0];
+        for (int itr = 0 ; itr < right_sibling->key_count - 1 ; itr++)
+            right_sibling->keys[itr] = right_sibling->keys[itr + 1];
+        right_sibling->key_count--;
+    }
+
+    void merge (BTreeNode<DataType> *& current) // not copying the pointers
+    {
+        BTreeNode<DataType> * parent = current->parent;
+        int original_parent_kc = parent->key_count;
+        int position = get_position(current);
+        int child_shift_position = position;
+        int key_shift_position;
+        BTreeNode<DataType> * sibling;
+        tree_type parent_value;
+        if (position == 0) // merge into the right sibling
         {
-            tree_type current_value = current_node->keys[key_itr];
-            jump_to_child = current_node->key_count;
-            bool skip = false;
-            if (current_value == value)
-                return true;
-            if (value < current_value)
+            key_shift_position = position;
+            sibling = parent->children[position + 1];
+            parent_value = parent->keys[position];
+        }
+        else // merge into the left sibling 
+        {
+            key_shift_position = position - 1;
+            sibling = parent->children[position - 1];
+            parent_value = parent->keys[position - 1];
+        }
+        int original_sibling_kc = sibling->key_count;
+        // inserting the pointers first
+        for (int itr = 0 ; itr <= current->key_count ; itr++)
+            sibling->children[++sibling->key_count] = current->children[itr];
+        // resetting the sibling key count to insert keys 
+        sibling->key_count = original_sibling_kc;
+
+        // inserting the paretnt value
+        sibling->keys[sibling->key_count++] = parent_value;
+
+        // inserting the values off the current node
+        for (int itr = 0 ; itr < current->key_count ; itr++)
+            sibling->keys[sibling->key_count++] = current->keys[itr];
+        delete current;
+
+        // adjust the parent pointers
+        for (int itr = key_shift_position ; itr < original_parent_kc - 1 ; itr++)
+            parent->keys[itr] = parent->keys[itr + 1];
+        for (int itr = child_shift_position ; itr < original_parent_kc  ; itr++)
+            parent->children[itr] = parent->children[itr + 1];
+        parent->key_count--;
+    }
+
+    void search(BTreeNode<DataType> *& current ,  tree_type value)
+    {
+        if (current == nullptr)
+        {
+            std::cout << "[!] The given value was not found in the B Tree " << std::endl;
+            return;
+        }
+        BTreeNode<DataType> * next_block = current->children[current->key_count];
+        for (int itr = 0 ; itr < current->key_count ; itr++)
+        {
+            if (value < current->keys[itr])
             {
-                if (leafNode)
-                    return false;
-                else 
-                {
-                    jump_to_child = key_itr;
-                    break;
-                }
+                next_block = current->children[itr];
+                break;
+            }
+            if (value == current->keys[itr])
+            {
+                std::cout << "[*] The given value was FOUND in the B Tree !!! " << std::endl;
+                return ;
             }
         }
-            current_node = current_node->children[jump_to_child];
-        }
-        return false;
+        search(next_block , value);
     }
-    
+
+    void remove(BTreeNode<DataType> *& current ,  tree_type value)
+    {
+        if (current == nullptr)
+            return;
+        BTreeNode<DataType> * next_block = current->children[current->key_count];
+        for (int itr = 0 ; itr < current->key_count ; itr++)
+        {
+            if (value < current->keys[itr])
+            {
+                next_block = current->children[itr];
+                break;
+            }
+            if (value == current->keys[itr]) // the value is found in the b tree
+            {
+                if (current->leafNode) // deletion from leaf node
+                {
+                    std::cout << "the value is found in the leaf node : " << std::endl;
+                    for (int remove_itr = itr ; remove_itr < current->key_count - 1 ; remove_itr++)
+                        current->keys[remove_itr] = current->keys[remove_itr + 1];
+                    current->key_count--;
+                    std::cout << "this is after the removal : " << std::endl;
+                    if (current->key_count < this->min_keys)
+                    {
+                        if (left_sibling_key_count(current) > this->min_keys) // borrow from left
+                            borrow_left(current);
+                        else if (right_sibling_key_count(current) > this->min_keys) // borrow from right
+                            borrow_right(current);
+                        else 
+                            merge(current);
+                    }
+                }
+                
+                else // deletion from non leaf node 
+                {
+                    if (predecessor_key_count(current , itr) >= this->min_keys)
+                    {
+                        BTreeNode<DataType> * predecessor = get_predecessor(current , itr);
+                        tree_type data_buffer = predecessor->keys[predecessor->key_count - 1];
+                        this->remove(current , data_buffer);
+                        current->keys[itr] = data_buffer;
+                    }
+                    else 
+                    {
+                        BTreeNode<DataType> * successor = get_successor(current , itr);
+                        tree_type data_buffer = successor->keys[0];
+                        this->remove(current , data_buffer);
+                        current->keys[itr] = data_buffer;
+                    }
+                }
+                return;
+            }
+        }
+        remove(next_block , value);
+        if (current->key_count < this->min_keys && !current->isRoot())
+            merge(current);
+    }
 
 };
 
 int main()
 {
     int order;
-    std::cout << "Enter the order of B Tree : " << std::endl;
-    std::cin >> order;
-
+    // std::cout << "Enter the order of B Tree : " << std::endl;
+    // std::cin >> order;
+    order = 5;
+    std::vector<tree_type> dataset = {};
 
     BTree<tree_type> * Tree = new BTree<tree_type>(order);
+    for (int i = 1 ; i <= 24; i++)
+        Tree->insert(i);
     while (true)
     {
+        std::cout << "--------------------\n";
+        Tree->display();
+        std::cout << "********************\n";
+        
         int choice;
          std::cout << "1) enter a value : " << std::endl;
          std::cout << "2) search the tree : " << std::endl;
+         std::cout << "3) delete : " << std::endl;
          std::cin >> choice;
-        // Tree->display();
-        // choice = 1;
         if (choice == 1)
         {
             tree_type value;
@@ -252,19 +455,28 @@ int main()
             std::cin >> value;
             Tree->insert(value);
         }
-        else    
+        else if (choice == 2)
         {
             std::cout << "Enter the value to search for in the tree : " << std::endl;
             tree_type value;
             std::cin >> value;
-            if (Tree->search(value))
-                std::cout << "The value was found in the btree ! " << std::endl;
-            else 
-                std::cout << "The value was not found in the btree" << std::endl;
+            Tree->search(Tree->root , value);
+            // if (Tree->search(value).first != nullptr)
+            //     std::cout << "The value was found in the btree ! " << std::endl;
+            // else 
+            //     std::cout << "The value was not found in the btree" << std::endl;
+
         }
-            std::cout << "--------------------";
-            Tree->display();
-            std::cout << "********************";
+        else 
+        {
+            std::cout << "Enter the value to delete from the tree : " << std::endl;
+            tree_type val;
+            std::cin >> val;
+            Tree->remove(Tree->root , val);
+        }
+    //         std::cout << "--------------------\n";
+    //         Tree->display();
+    //         std::cout << "********************\n";
     }
     return 0;
 }
