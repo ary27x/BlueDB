@@ -475,7 +475,7 @@ int main()
     order = 5;
     BTree<tree_type> * Tree = new BTree<tree_type>(order);
     // fix the root , leaf , not leaf pointers
-    for (int i = 1 ; i <= 17 ; i++) 
+    for (int i = 1 ; i <= 17 ; i++) //p17d13d16
         Tree->insert(i);
     while (true)
     {
