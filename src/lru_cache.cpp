@@ -1,5 +1,31 @@
 #include <iostream>
 
+
+/*
+
+updating pages : dirty pages and write_back_manager :
+-----------------------------------------------------
+suppose we need to update page number 5 , and we have a cached version of it in the 
+memory. we would then just make the updates in the cached version, instead of 
+the disk page. this approach would help us in the sense that suppose we are making
+10 changes to the page number 5 , writing all the 10 changes back to the disk pages
+one after the other , which would involve 10 disk io operation , we would just
+make the changes to the cached counterpart, and would set the isDirtyPage flag to 
+be true, which would indicate that its disk counterpart is not updated.
+
+now we would need a write_back_manager to handle updation
+
+when we are evicting a page from the lru_cache , before the eviction, we would need
+to see if the isDirtyPage is set to true or not. if it is , we would need to first
+update the actual disk page with the dirty page, and then evict the dirty page
+from the cache.
+
+to handle application closure or cache flushing , 
+we would append the write_back_manager to the start of the lru_cache destructor and
+flush method respectively , so that the write_back_manager would first iterate 
+over all the cached pages and update the ones that are dirty , before getting rid
+of them all.
+*/
 template <typename NodeType>
 class DLL_Node
 {
