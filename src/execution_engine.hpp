@@ -9,13 +9,7 @@
 #include "lru_cache.hpp"
 
 
-enum 
-{
-    ERROR_TABLE_NOT_FOUND,
-    ERROR_ATTRIBUTE_MISMATCH,
-    ERROR_ATTRIBUTE_UNDERFLOW, 
-    ERROR_ATTRIBUTE_OVERFLOW, 
-} EXEC_CODE;
+
 
 
 class execution_engine
