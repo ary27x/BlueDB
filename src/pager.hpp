@@ -11,6 +11,18 @@
 #include "frontend.hpp"
 #define PAGE_SIZE 4096
 
+
+
+struct search_constraint
+{
+    uint32_t attribute_offset;
+    uint32_t read_size;
+    TOKEN_SET data_type;
+    NODE_SET relational_operation;
+    std::string value;
+};
+
+
 enum 
 {
     EXEC_SUCCESS,
@@ -29,6 +41,12 @@ std::unordered_map <NODE_SET , char> schema_type_conversion = {
     {NODE_STRING , 's'},
 };
 
+std::unordered_map<TOKEN_SET , uint32_t> token_set_size_converter = {
+    {TOKEN_INT_DATA , sizeof(int)},
+    {TOKEN_FLOAT_DATA , sizeof(float)},
+    {TOKEN_STRING_DATA , 10}
+};
+
 std::unordered_map <char , uint32_t> size_conversion = {
     {'i' , sizeof(int)},
     {'f' , sizeof(float)},
@@ -45,12 +63,27 @@ uint32_t get_attribute_count (std::string &table_schema)
     return semi_colon_count + 1;
 }
 
+template <typename datatype>
+bool compare_raw_values (datatype& lhs , datatype& rhs , NODE_SET OP_CODE)
+{
+    switch (OP_CODE)
+    {
+        case NODE_CONDITION_EQUALS : return lhs == rhs;
+        case NODE_CONDITION_GREATER_THAN : return lhs > rhs;
+        case NODE_CONDITION_GREATER_THAN_EQUALS : return lhs >= rhs;
+        case NODE_CONDITION_LESS_THAN : return lhs < rhs;
+        case NODE_CONDITION_LESS_THAN_EQUALS : return lhs <= rhs;
+        case NODE_CONDITION_NOT_EQUALS : return lhs != rhs;
+    }
+}
 
 
 
 struct Page
 {
 
+// this would be the struct of the page
+// adnt his  
 };
 
 struct HeapFile_Metadata
@@ -78,13 +111,13 @@ struct HeapFile_Metadata
     
 };
 
-
-
-
-
 class Pager
 {
     private :
+
+
+    void partial_deserialization();
+
     bool heap_file_exists(std::string* table_name)
     {
         std::ifstream test_stream;
@@ -94,6 +127,16 @@ class Pager
         test_stream.close();
         return status;
     } 
+
+    void render_constraint(search_constraint & current_constraint)
+    {
+    std::cout << "offset : " << current_constraint.attribute_offset << std::endl;
+    std::cout << " read size : " << current_constraint.read_size << std::endl;
+    std::cout << " data_type : " << tokenTypeToString(current_constraint.data_type)  << std::endl;
+    std::cout << " relational operator type : " << nodeTypeToString(current_constraint.relational_operation)  << std::endl;
+    std::cout << " value : " << current_constraint.value << std::endl;
+    std::cout << "-----------------------------" << std::endl;
+    }
 
     std::string construct_schema(std::vector<AST_NODE *>& table_attribute)
     {
@@ -221,8 +264,7 @@ class Pager
         // attaching the dynamic schema to the header
         heap_write_stream.write(required_headers.schema.c_str() , required_headers.schema_offset);
     }
-
-    
+   
     bool add_to_heap(AST_NODE *& action_node)
     {
         if (!heap_file_exists(action_node->PAYLOAD))
@@ -253,6 +295,7 @@ class Pager
         heap_write_stream.close();
         return true;
     }
+   
     bool create_new_heap(AST_NODE *& action_node)
     {
         // working on the same database , change the behaviour for multi db
@@ -290,6 +333,91 @@ class Pager
         free(schema_buffer_pointer);
         return heapfile_headers;
     }
+   
+
+    uint32_t get_attribute_offset (std::string * attribute , std::vector<std::string> & schema_chunks)
+    {
+        uint32_t attribute_offset = 0;
+        for (const std::string & chunk : schema_chunks)
+        {
+            if (*attribute == chunk.substr(1))
+                return attribute_offset;
+            else
+                attribute_offset += size_conversion[chunk[0]];
+        }
+        std::cout << "Error :: could not find the following attribute : " << *attribute << std::endl;
+        exit(1);
+        return attribute_offset;
+    }
+    std::vector<search_constraint> get_search_constraints (AST_NODE *& condition_node , std::vector<std::string> & schema_chunks)
+    {
+        std::vector<search_constraint> search_constraints;
+        AST_NODE * buffer = condition_node->CHILDREN[0];
+        for (AST_NODE * current_condition : condition_node->CHILDREN)
+        {
+            search_constraint new_constraint;
+
+            new_constraint.attribute_offset = get_attribute_offset(current_condition->PAYLOAD , schema_chunks);
+            new_constraint.relational_operation = current_condition->NODE_TYPE;
+            new_constraint.data_type = current_condition->HELPER_TOKEN;
+            new_constraint.value = *current_condition->SUB_PAYLOAD;
+            new_constraint.read_size = token_set_size_converter[current_condition->HELPER_TOKEN]; 
+
+            search_constraints.push_back(new_constraint);
+        }
+        return search_constraints;
+   }
+
+    bool match_search_constraints(std::vector<search_constraint> & data_constraints , std::ifstream & heap_read_stream , uint32_t read_offset_reset_position)
+    {
+        for (const search_constraint& current_search_constraint : data_constraints)
+        {
+            switch (current_search_constraint.data_type) // write better code for this using function templates
+            {
+                case TOKEN_INT_DATA :
+                {
+                    int read_buffer;
+                    heap_read_stream.seekg(read_offset_reset_position + current_search_constraint.attribute_offset , std::ios::beg);
+                    heap_read_stream.read(reinterpret_cast <char *> (&read_buffer) , current_search_constraint.read_size);
+                    int compare_value = std::stoi(current_search_constraint.value);
+                    if (!compare_raw_values<int>(read_buffer , compare_value , current_search_constraint.relational_operation))
+                        return false;
+                    break;
+                }
+                case TOKEN_FLOAT_DATA :
+                {
+                    float read_buffer;
+                    heap_read_stream.seekg(read_offset_reset_position + current_search_constraint.attribute_offset , std::ios::beg);
+                    heap_read_stream.read(reinterpret_cast <char *> (&read_buffer) , current_search_constraint.read_size);
+                    float compare_value = std::stof(current_search_constraint.value);
+                    if (!compare_raw_values<float>(read_buffer , compare_value , current_search_constraint.relational_operation))
+                        return false;
+                    break;
+                } 
+                case TOKEN_STRING_DATA :
+                {
+                    uint32_t current_size = current_search_constraint.read_size;
+                    char * read_buffer = (char*) malloc(current_size + 1);
+                    heap_read_stream.seekg(read_offset_reset_position + current_search_constraint.attribute_offset , std::ios::beg);
+                    heap_read_stream.read(read_buffer , current_size);
+                    read_buffer[current_size] = '\0';
+                    std::string buffer_data;
+                    buffer_data.assign(read_buffer);
+                    std::string rhs_value = current_search_constraint.value;
+                    if (!compare_raw_values<std::string>(buffer_data , rhs_value , current_search_constraint.relational_operation))
+                    {
+                        free(read_buffer);
+                        return false;
+                    }
+                    free(read_buffer);
+                    break;
+                }
+            }
+            heap_read_stream.seekg(read_offset_reset_position , std::ios::beg);
+        }
+        return true;
+    }
+
     bool get_heap(AST_NODE *& action_node)
     {
 
@@ -312,12 +440,31 @@ class Pager
         // std::cout << "this is the current offset of the ifstream : " << heap_read_stream.tellg() << std::endl;
         
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
+        std::vector<search_constraint> data_constraints;
+        bool constraint_flag = false;
+        if (action_node->CHILD) // condition node is attached
+        {
+            constraint_flag = true;
+            data_constraints = get_search_constraints(action_node->CHILD , schema_chunks);
+        }
+
         for (std::string attribute : schema_chunks)
             std::cout << attribute.substr(1) << "\t";
         std::cout << std::endl;
 
         for (int record_counter = 0 ; record_counter < current_heapfile_metadata.record_count ; record_counter++)
-            deserialize(heap_read_stream , schema_chunks);
+        {
+            if (constraint_flag)
+            {
+                uint32_t read_stream_offset =  heap_read_stream.tellg();
+                if (match_search_constraints(data_constraints , heap_read_stream , read_stream_offset))
+                    deserialize(heap_read_stream , schema_chunks);
+                else
+                    heap_read_stream.seekg(read_stream_offset + current_heapfile_metadata.record_size , std::ios::beg);
+            }
+            else
+                deserialize(heap_read_stream , schema_chunks);
+        }
         
         heap_read_stream.close(); 
         return true;
@@ -356,20 +503,12 @@ class Pager
                 }
 
 
+
             }
         }
         std::cout << std::endl;
     }
 
-
-
-    bool insert_record(std::string table_name , void * record)
-    {
-        std::ofstream table_heap_file;
-        table_heap_file.open(table_name + ".dat" , std::ios::binary);
-        
-
-    }
 };
 
 #endif
