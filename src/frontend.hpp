@@ -612,15 +612,15 @@ class Parser
         AST_NODE * buffer_pointer;
         while (true)
         {
-            std::string construct = "";
+            std::string * construct = new std::string();
             buffer_pointer = new AST_NODE;
-            construct += checkAndProceed(TOKEN_ID)->VALUE;
+            *construct += checkAndProceed(TOKEN_ID)->VALUE;
             if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
             {
                 proceed(TOKEN_DOT);
-                construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+                *construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
             }
-            buffer_pointer->PAYLOAD = &construct;
+            buffer_pointer->PAYLOAD = construct;
 
             if (REL_SET.find(CURRENT_TOKEN->TOKEN_TYPE) == REL_SET.end())
                 throwSyntaxError();
@@ -630,15 +630,15 @@ class Parser
             {
                 case TOKEN_ID :
                 {
-                    std::string construct;
+                    std::string * construct = new std::string();
                     buffer_pointer->HELPER_TOKEN = TOKEN_ID;
-                    construct += checkAndProceed(TOKEN_ID)->VALUE;
+                    *construct += checkAndProceed(TOKEN_ID)->VALUE;
                     if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
                     {
                         proceed(TOKEN_DOT);
-                        construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+                        *construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
                     }
-                    buffer_pointer->SUB_PAYLOAD = &construct;
+                    buffer_pointer->SUB_PAYLOAD = construct;
                     break;
                 } 
                 case TOKEN_INT_DATA : 

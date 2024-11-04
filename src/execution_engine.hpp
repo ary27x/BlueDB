@@ -22,6 +22,66 @@ class execution_engine
         main_pager = new Pager();
     } 
 
+    void generate_records(uint64_t data)
+    {
+        std::time_t start_time = std::time(nullptr);
+        std::cout << "Start time : " <<  start_time << std::endl;
+
+        std::string * table_name = new std::string("students");
+        AST_NODE * action_node = new AST_NODE();
+        action_node->PAYLOAD = table_name;
+
+        std::vector<std::vector<AST_NODE *>> multi_data_records;
+        uint64_t percentage_counter = 0;
+        uint64_t percentage_chunk = data / 100;
+        uint64_t counter = 0;
+        for (uint64_t itr = 1 ; itr <= data ; itr++)
+        {
+            counter++;
+            if (counter == percentage_chunk)
+            {
+                counter = 0;
+                percentage_counter++;
+                std::cout  << "\r" << percentage_counter << "%";
+
+            }
+
+            std::vector<AST_NODE *> buffer_vector;
+            // int id , string name , int age 
+            AST_NODE * id_node = new AST_NODE();
+            AST_NODE * name_node = new AST_NODE();
+            AST_NODE * age_node = new AST_NODE();
+            
+
+            id_node->NODE_TYPE = NODE_INT;
+            name_node->NODE_TYPE = NODE_STRING;
+            age_node->NODE_TYPE = NODE_INT;
+            
+            std::string * id_value = new std::string(std::to_string(itr));
+            std::string * name_value = new std::string("n" + std::to_string(itr));
+            std::string * age_value = new std::string(std::to_string(rand() % 100));
+
+            id_node->PAYLOAD = id_value;
+            name_node->PAYLOAD = name_value;
+            age_node->PAYLOAD = age_value;
+
+            buffer_vector.push_back(id_node);
+            buffer_vector.push_back(name_node);
+            buffer_vector.push_back(age_node);
+
+            multi_data_records.push_back(buffer_vector);
+        }
+        action_node->MULTI_DATA = multi_data_records;
+        main_pager->add_to_heap(action_node);
+        
+
+        std::time_t end_time = std::time(nullptr);
+        std::cout << "End time : " <<  end_time << std::endl;
+
+        std::cout << "Time taken : " << end_time - start_time << " seconds "<< std::endl;
+    
+    }
+
     bool handle_new(AST_NODE *& action_node)
     {
         // to the handle checking
@@ -43,10 +103,16 @@ class execution_engine
     }
     bool handle_print(AST_NODE *& action_node)
     {
+        std::time_t start_time = std::time(nullptr);
+
         bool status = main_pager->get_heap(action_node);
         if (!status)
             std::cout << "Error , the given table does not exist in the table ! " << std::endl;
+        
+        std::time_t end_time = std::time(nullptr);
 
+        std::cout << "[*] Time taken : " << end_time - start_time << " seconds "<< std::endl;
+    
     }
     bool handle_update(AST_NODE *& action_node)
     {

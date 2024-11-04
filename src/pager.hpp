@@ -42,15 +42,15 @@ std::unordered_map <NODE_SET , char> schema_type_conversion = {
 };
 
 std::unordered_map<TOKEN_SET , uint32_t> token_set_size_converter = {
-    {TOKEN_INT_DATA , sizeof(int)},
+    {TOKEN_INT_DATA , sizeof(uint64_t)},
     {TOKEN_FLOAT_DATA , sizeof(float)},
-    {TOKEN_STRING_DATA , 10}
+    {TOKEN_STRING_DATA , 20}
 };
 
 std::unordered_map <char , uint32_t> size_conversion = {
-    {'i' , sizeof(int)},
+    {'i' , sizeof(uint64_t)},
     {'f' , sizeof(float)},
-    {'s' , 10}, // change this behaviour in the parser
+    {'s' , 20}, // change this behaviour in the parser
 };
 
 
@@ -79,11 +79,9 @@ bool compare_raw_values (datatype& lhs , datatype& rhs , NODE_SET OP_CODE)
 
 
 
-struct Page
+struct page_header
 {
-
-// this would be the struct of the page
-// adnt his  
+    uint16_t page_record_count;
 };
 
 struct HeapFile_Metadata
@@ -184,7 +182,7 @@ class Pager
         return schema_chunks;
     }
 
-    void * serialize (std::vector<AST_NODE *>& record , uint32_t record_size , std::vector<std::string>& schema_chunks)
+    void * serialize (std::vector<AST_NODE *>& record , uint32_t record_size , std::vector<std::string>& schema_chunks) 
     {
         if (record.size() != schema_chunks.size())
         {
@@ -210,8 +208,8 @@ class Pager
             {
                 case NODE_INT :
                 {
-                    int type_cast_buffer = std::stoi(*current_attribute->PAYLOAD);
-                    memcpy(static_cast <char *> (serialized_block) + offset_accumalator , &type_cast_buffer , sizeof(int));
+                    uint64_t type_cast_buffer = std::stoi(*current_attribute->PAYLOAD);
+                    memcpy(static_cast <char *> (serialized_block) + offset_accumalator , &type_cast_buffer , sizeof(uint64_t));
                     break;
                 }
                 case NODE_FLOAT :
@@ -239,6 +237,8 @@ class Pager
 
     void write_heapfile_metadata(std::ofstream& heap_write_stream , HeapFile_Metadata & required_headers)
     {
+        heap_write_stream.seekp(0 , std::ios::beg);
+
         heap_write_stream.write(reinterpret_cast<char *> (&required_headers.total_offset) , sizeof(uint32_t));
         heap_write_stream.write(reinterpret_cast<char *> (&required_headers.page_count) , sizeof(uint32_t));
         heap_write_stream.write(reinterpret_cast<char *> (&required_headers.record_count) , sizeof(uint32_t));
@@ -264,7 +264,21 @@ class Pager
         // attaching the dynamic schema to the header
         heap_write_stream.write(required_headers.schema.c_str() , required_headers.schema_offset);
     }
+
+    void update_page_to_disk(std::fstream& heap_write_stream , void * new_page_block , uint16_t record_count , uint32_t page_number , uint32_t total_offset)
+    {
+        memcpy(new_page_block , &record_count , sizeof(uint16_t)); // first we are copying the new header
+        heap_write_stream.seekg(total_offset + (page_number - 1) * PAGE_SIZE , std::ios::beg); // setting up the pointer
+        heap_write_stream.write(reinterpret_cast <char *> (new_page_block) , PAGE_SIZE);
+    }
    
+    uint16_t get_page_record_count (void * page_block)
+    {
+        uint16_t page_record_count;
+        memcpy(&page_record_count , page_block , sizeof(uint16_t));
+        return page_record_count;
+    }
+
     bool add_to_heap(AST_NODE *& action_node)
     {
         if (!heap_file_exists(action_node->PAYLOAD))
@@ -272,37 +286,70 @@ class Pager
             std::cout << "Error , the given table does not exist , cannot insert data to it ! " << std::endl;
             return false;
         }
+
         std::ifstream heap_reader_stream(*action_node->PAYLOAD + ".dat" , std::ios::binary);
         HeapFile_Metadata current_heap_metadata =  deserialize_heapfile_metadata(heap_reader_stream);
         heap_reader_stream.close();
         
         std::vector<std::string> schema_chunks = split_schema(current_heap_metadata.schema);
+        uint16_t max_record_per_page = (PAGE_SIZE - sizeof(page_header)) / current_heap_metadata.record_size;
         
         std::fstream heap_write_stream(*action_node->PAYLOAD + ".dat" , std::ios::in | std::ios::out | std::ios::binary );
-        heap_write_stream.seekp(current_heap_metadata.total_offset +  current_heap_metadata.record_size * current_heap_metadata.record_count);
+        
+        // heap_write_stream.seekp(current_heap_metadata.total_offset +  current_heap_metadata.record_size * current_heap_metadata.record_count);
 
+
+        void * page_read_buffer = malloc(PAGE_SIZE);
+        heap_write_stream.seekp(current_heap_metadata.total_offset + (current_heap_metadata.page_count - 1) * PAGE_SIZE , std::ios::beg);
+        heap_write_stream.read(reinterpret_cast <char *> (page_read_buffer) , PAGE_SIZE);
+        uint16_t page_record_count = get_page_record_count(page_read_buffer);
+
+        
         for (std::vector<AST_NODE *> record : action_node->MULTI_DATA)
         {
+            if (page_record_count == max_record_per_page)
+            {
+                update_page_to_disk(heap_write_stream , page_read_buffer , page_record_count , current_heap_metadata.page_count , current_heap_metadata.total_offset);
+                create_new_page<std::fstream> (heap_write_stream , current_heap_metadata);
+                heap_write_stream.seekp(current_heap_metadata.total_offset + (current_heap_metadata.page_count - 1) * PAGE_SIZE , std::ios::beg);
+                heap_write_stream.read(reinterpret_cast <char *> (page_read_buffer) , PAGE_SIZE);
+                page_record_count = get_page_record_count(page_read_buffer);
+            }
             void * serialized_block = serialize(record , current_heap_metadata.record_size , schema_chunks);
-            heap_write_stream.write(static_cast<char *> (serialized_block) , current_heap_metadata.record_size);    
+            uint16_t write_offset = sizeof(page_header) + (page_record_count * current_heap_metadata.record_size);
+            memcpy(reinterpret_cast <char *> (page_read_buffer) + write_offset , serialized_block , current_heap_metadata.record_size);
             current_heap_metadata.record_count++;
+            page_record_count++;
         }
 
         heap_write_stream.seekp(0 , std::ios::beg); // resetting the pointer to the start of the file 
         // to write back the updated heap file metadata
         update_heapfile_metadata(heap_write_stream , current_heap_metadata);
+        // update the page count 
+        update_page_to_disk(heap_write_stream , page_read_buffer , page_record_count , current_heap_metadata.page_count , current_heap_metadata.total_offset);
         std::cout << "closing the stream : " << std::endl;
         heap_write_stream.close();
+        free(page_read_buffer);
         return true;
     }
    
+    template <typename stream_type>
+    bool create_new_page(stream_type& heap_write_stream , HeapFile_Metadata & current_meta)
+    {
+        void * new_page_block = malloc (PAGE_SIZE);
+        uint16_t start_record_count = 0;
+        memcpy(new_page_block , &start_record_count , sizeof(uint16_t));
+        heap_write_stream.write(reinterpret_cast <char *> (new_page_block) , PAGE_SIZE);
+        current_meta.page_count++;
+        free(new_page_block);
+        return true;
+    }
+
     bool create_new_heap(AST_NODE *& action_node)
     {
         // working on the same database , change the behaviour for multi db
-        std::cout << "this is the start of the create new heap function : " << std::endl;
         if (heap_file_exists(action_node->PAYLOAD))
             return false;
-        std::cout << "creating the new heap : " << std::endl;
         std::string table_schema = construct_schema(action_node->CHILDREN);
         uint32_t record_size = get_size(table_schema);
         HeapFile_Metadata current_metadata (table_schema , record_size);
@@ -310,6 +357,8 @@ class Pager
         std::ofstream heap_write_stream(*action_node->PAYLOAD + ".dat" , std::ios::binary);
         // writing the heap file header to the file
         write_heapfile_metadata(heap_write_stream , current_metadata);
+        create_new_page<std::ofstream>(heap_write_stream , current_metadata);
+        write_heapfile_metadata(heap_write_stream , current_metadata); // writing the updated version of hte heapfile meta
         heap_write_stream.close();
         return true;
     }
@@ -334,7 +383,6 @@ class Pager
         return heapfile_headers;
     }
    
-
     uint32_t get_attribute_offset (std::string * attribute , std::vector<std::string> & schema_chunks)
     {
         uint32_t attribute_offset = 0;
@@ -349,6 +397,7 @@ class Pager
         exit(1);
         return attribute_offset;
     }
+    
     std::vector<search_constraint> get_search_constraints (AST_NODE *& condition_node , std::vector<std::string> & schema_chunks)
     {
         std::vector<search_constraint> search_constraints;
@@ -368,27 +417,26 @@ class Pager
         return search_constraints;
    }
 
-    bool match_search_constraints(std::vector<search_constraint> & data_constraints , std::ifstream & heap_read_stream , uint32_t read_offset_reset_position)
+    bool match_search_constraints(std::vector<search_constraint> & data_constraints , void * page_block , uint16_t record_count , uint32_t record_size)
     {
+        uint16_t record_offset = sizeof(page_header) + (record_count - 1) * record_size;
         for (const search_constraint& current_search_constraint : data_constraints)
         {
             switch (current_search_constraint.data_type) // write better code for this using function templates
             {
                 case TOKEN_INT_DATA :
                 {
-                    int read_buffer;
-                    heap_read_stream.seekg(read_offset_reset_position + current_search_constraint.attribute_offset , std::ios::beg);
-                    heap_read_stream.read(reinterpret_cast <char *> (&read_buffer) , current_search_constraint.read_size);
-                    int compare_value = std::stoi(current_search_constraint.value);
-                    if (!compare_raw_values<int>(read_buffer , compare_value , current_search_constraint.relational_operation))
+                    uint64_t read_buffer;
+                    memcpy(&read_buffer , reinterpret_cast <char *> (page_block) + (record_offset + current_search_constraint.attribute_offset) , current_search_constraint.read_size);
+                    uint64_t compare_value = std::stoi(current_search_constraint.value);
+                    if (!compare_raw_values<uint64_t>(read_buffer , compare_value , current_search_constraint.relational_operation))
                         return false;
                     break;
                 }
                 case TOKEN_FLOAT_DATA :
                 {
                     float read_buffer;
-                    heap_read_stream.seekg(read_offset_reset_position + current_search_constraint.attribute_offset , std::ios::beg);
-                    heap_read_stream.read(reinterpret_cast <char *> (&read_buffer) , current_search_constraint.read_size);
+                    memcpy(&read_buffer , reinterpret_cast <char *> (page_block) + (record_offset + current_search_constraint.attribute_offset) , current_search_constraint.read_size);
                     float compare_value = std::stof(current_search_constraint.value);
                     if (!compare_raw_values<float>(read_buffer , compare_value , current_search_constraint.relational_operation))
                         return false;
@@ -398,22 +446,20 @@ class Pager
                 {
                     uint32_t current_size = current_search_constraint.read_size;
                     char * read_buffer = (char*) malloc(current_size + 1);
-                    heap_read_stream.seekg(read_offset_reset_position + current_search_constraint.attribute_offset , std::ios::beg);
-                    heap_read_stream.read(read_buffer , current_size);
+                    memcpy(read_buffer , reinterpret_cast <char *> (page_block) + (record_offset + current_search_constraint.attribute_offset) , current_search_constraint.read_size);
                     read_buffer[current_size] = '\0';
+                    
                     std::string buffer_data;
                     buffer_data.assign(read_buffer);
                     std::string rhs_value = current_search_constraint.value;
-                    if (!compare_raw_values<std::string>(buffer_data , rhs_value , current_search_constraint.relational_operation))
-                    {
-                        free(read_buffer);
-                        return false;
-                    }
+                    
+                    bool comparison_result = compare_raw_values<std::string>(buffer_data , rhs_value , current_search_constraint.relational_operation);
                     free(read_buffer);
+                    if (!comparison_result) // the comparison has failed
+                        return false;
                     break;
                 }
             }
-            heap_read_stream.seekg(read_offset_reset_position , std::ios::beg);
         }
         return true;
     }
@@ -423,22 +469,25 @@ class Pager
 
         if (!this->heap_file_exists(&action_node->DATA_LIST[0]))
             return false;
-        // std::cout << "[*] Table Name : " << action_node->DATA_LIST[0] << std::endl;
-        // std::cout << "[*] Heap File : " << action_node->DATA_LIST[0]+ ".dat" << std::endl;
+        std::cout << "[*] Table Name : " << action_node->DATA_LIST[0] << std::endl;
+        std::cout << "[*] Heap File : " << action_node->DATA_LIST[0]+ ".dat" << std::endl;
         std::ifstream heap_read_stream (action_node->DATA_LIST[0] + ".dat" , std::ios::binary);
 
         HeapFile_Metadata current_heapfile_metadata = deserialize_heapfile_metadata(heap_read_stream);
         
-        // std::cout << "[*] Schema Offset : " << current_heapfile_metadata.schema_offset << std::endl;
-        // std::cout << "[*] Page Count : " << current_heapfile_metadata.page_count << std::endl;
-        // std::cout << "[*] Record Count : " << current_heapfile_metadata.record_count <<  std::endl;
-        // std::cout << "[*] Record Size : " << current_heapfile_metadata.record_size <<  std::endl;
-        // std::cout << "[*] Write Page ID : " << current_heapfile_metadata.write_page_id <<  std::endl;
-        // std::cout << "[*] Total Offset : " << current_heapfile_metadata.total_offset <<  std::endl;
-        // std::cout << "[*] Schema : " << current_heapfile_metadata.schema << std::endl;
-        // std::cout << "[*] Attribute Count : " << current_heapfile_metadata.attribute_count << std::endl;
-        // std::cout << "this is the current offset of the ifstream : " << heap_read_stream.tellg() << std::endl;
-        
+        std::cout << "[*] Schema Offset : " << current_heapfile_metadata.schema_offset << std::endl;
+        std::cout << "[*] Page Count : " << current_heapfile_metadata.page_count << std::endl;
+        std::cout << "[*] Record Count : " << current_heapfile_metadata.record_count <<  std::endl;
+        std::cout << "[*] Record Size : " << current_heapfile_metadata.record_size <<  std::endl;
+        std::cout << "[*] Write Page ID : " << current_heapfile_metadata.write_page_id <<  std::endl;
+        std::cout << "[*] Total Offset : " << current_heapfile_metadata.total_offset <<  std::endl;
+        std::cout << "[*] Schema : " << current_heapfile_metadata.schema << std::endl;
+        std::cout << "[*] Attribute Count : " << current_heapfile_metadata.attribute_count << std::endl;
+
+        uint16_t max_record_per_page = (PAGE_SIZE - sizeof(page_header)) / current_heapfile_metadata.record_size;
+        std::cout << "[*] Max number of records per page : " << max_record_per_page << std::endl;
+
+
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
         std::vector<search_constraint> data_constraints;
         bool constraint_flag = false;
@@ -452,41 +501,52 @@ class Pager
             std::cout << attribute.substr(1) << "\t";
         std::cout << std::endl;
 
-        for (int record_counter = 0 ; record_counter < current_heapfile_metadata.record_count ; record_counter++)
+        void * page_read_buffer = malloc(PAGE_SIZE);
+        for (int page_counter = 1 ; page_counter <= current_heapfile_metadata.page_count ; page_counter++)
         {
-            if (constraint_flag)
+            heap_read_stream.read(reinterpret_cast <char *> (page_read_buffer) , PAGE_SIZE);
+            uint16_t page_record_count;
+            memcpy(&page_record_count , page_read_buffer , sizeof(uint16_t));
+            uint16_t read_offset = sizeof(page_header);
+            for (int record_itr = 1 ; record_itr <= page_record_count ; record_itr++)
             {
-                uint32_t read_stream_offset =  heap_read_stream.tellg();
-                if (match_search_constraints(data_constraints , heap_read_stream , read_stream_offset))
-                    deserialize(heap_read_stream , schema_chunks);
+                if (constraint_flag)
+                {
+                    if (match_search_constraints(data_constraints , page_read_buffer , record_itr , current_heapfile_metadata.record_size))
+                        deserialize(page_read_buffer , read_offset , schema_chunks);
+                }
                 else
-                    heap_read_stream.seekg(read_stream_offset + current_heapfile_metadata.record_size , std::ios::beg);
+                {
+                    deserialize(page_read_buffer , read_offset , schema_chunks);
+                }
+                read_offset += current_heapfile_metadata.record_size;
             }
-            else
-                deserialize(heap_read_stream , schema_chunks);
         }
         
         heap_read_stream.close(); 
         return true;
     }
 
-    void deserialize(std::ifstream& heap_read_stream , std::vector<std::string>& schema_chunks)
+    void deserialize(void * page_block , uint16_t read_offset ,  std::vector<std::string>& schema_chunks)
     {
+        uint16_t attribute_read_offset = read_offset;
         for (std::string attribute : schema_chunks)
         {
             switch(attribute[0])
             {
                 case 'i':
                 {
-                    int read_buffer;
-                    heap_read_stream.read(reinterpret_cast<char *> (&read_buffer) , sizeof(int));
+                    uint64_t read_buffer;
+                    memcpy(&read_buffer , reinterpret_cast <char *> (page_block) + attribute_read_offset , sizeof(uint64_t));
+                    attribute_read_offset += sizeof(uint64_t);
                     std::cout << read_buffer << "\t";
                     break;
                 }
                 case 'f':
                 {
                     float read_buffer;
-                    heap_read_stream.read(reinterpret_cast<char *> (&read_buffer) , sizeof(float));
+                    memcpy(&read_buffer , reinterpret_cast <char *> (page_block) + attribute_read_offset , sizeof(float));
+                    attribute_read_offset += sizeof(float);
                     std::cout << read_buffer << "\t";
                     break;
                 }
@@ -494,16 +554,13 @@ class Pager
                 {
                     uint32_t current_size = size_conversion[attribute[0]];
                     char * read_buffer = (char*) malloc(current_size + 1);
-                    heap_read_stream.read(read_buffer , current_size);
+                    memcpy(read_buffer , reinterpret_cast <char *> (page_block) + attribute_read_offset , current_size);
+                    attribute_read_offset += current_size;
                     read_buffer[current_size] = '\0';
                     std::cout << read_buffer << "\t";
                     free(read_buffer);
                     break;                
-
                 }
-
-
-
             }
         }
         std::cout << std::endl;
