@@ -11,8 +11,6 @@
 #include "frontend.hpp"
 #define PAGE_SIZE 4096
 
-
-
 struct search_constraint
 {
     uint64_t attribute_offset;
@@ -22,7 +20,6 @@ struct search_constraint
     std::string value;
 };
 
-
 struct update_constraint
 {
     uint64_t attribute_offset;
@@ -30,7 +27,6 @@ struct update_constraint
     TOKEN_SET data_type;
     std::string new_value;
 };
-
 
 enum
 {
@@ -40,9 +36,6 @@ enum
     ERROR_ATTRIBUTE_UNDERFLOW,
     ERROR_ATTRIBUTE_OVERFLOW,
 } EXEC_CODE;
-
-
-
 
 std::unordered_map <NODE_SET , char> schema_type_conversion = {
     {NODE_INT    , 'i'},
@@ -86,8 +79,6 @@ bool compare_raw_values (datatype& lhs , datatype& rhs , NODE_SET OP_CODE)
     }
 }
 
-
-
 struct page_header
 {
     uint64_t page_record_count;
@@ -121,10 +112,6 @@ struct HeapFile_Metadata
 class Pager
 {
     private :
-
-
-    void partial_deserialization();
-
     bool heap_file_exists(std::string* table_name)
     {
         std::ifstream test_stream;
@@ -133,16 +120,6 @@ class Pager
         bool status = test_stream.good();
         test_stream.close();
         return status;
-    }
-
-    void render_constraint(search_constraint & current_constraint)
-    {
-    std::cout << "offset : " << current_constraint.attribute_offset << std::endl;
-    std::cout << " read size : " << current_constraint.read_size << std::endl;
-    std::cout << " data_type : " << tokenTypeToString(current_constraint.data_type)  << std::endl;
-    std::cout << " relational operator type : " << nodeTypeToString(current_constraint.relational_operation)  << std::endl;
-    std::cout << " value : " << current_constraint.value << std::endl;
-    std::cout << "-----------------------------" << std::endl;
     }
 
     std::string construct_schema(std::vector<AST_NODE *>& table_attribute)
@@ -167,11 +144,9 @@ class Pager
         }
         return record_size;
     }
+    
     public :
-    Pager()
-    {
-
-    }
+    Pager() {}
 
     std::vector<std::string> split_schema(std::string & table_schema)
     {
@@ -195,9 +170,7 @@ class Pager
     {
         if (record.size() != schema_chunks.size())
         {
-            // THIS ERROR IS SOMEHOW CORRUPTING THE HEAP HEADERS
-            // FIX THIS
-            std::cout << "Attribute Size Error ! could not insert the data : " << std::endl;
+            std::cout << "Attribute Size Error ! could not insert the data : , this is supposed to corrupt the heap headers " << std::endl;
             exit(1);
         }
         void * serialized_block = malloc(record_size);
@@ -208,8 +181,6 @@ class Pager
             std::string current_schema_chunk = schema_chunks[itr];
             if (schema_type_conversion[current_attribute->NODE_TYPE] != current_schema_chunk[0])
             {
-                // THIS ERROR IS SOMEHOW CORRUPTING THE HEAP HEADERS
-                // FIX THIS
                 std::cout << "Attribute mismatch error ! " << std::endl;
                 exit(1);
             }
@@ -262,6 +233,8 @@ class Pager
 
     void update_heapfile_metadata(std::fstream& heap_write_stream , HeapFile_Metadata & required_headers)
     {
+        heap_write_stream.seekp(0 , std::ios::beg);
+
         heap_write_stream.write(reinterpret_cast<char *> (&required_headers.total_offset) , sizeof(uint64_t));
         heap_write_stream.write(reinterpret_cast<char *> (&required_headers.page_count) , sizeof(uint64_t));
         heap_write_stream.write(reinterpret_cast<char *> (&required_headers.record_count) , sizeof(uint64_t));
@@ -492,24 +465,10 @@ class Pager
 
         if (!this->heap_file_exists(&action_node->DATA_LIST[0]))
             return false;
-        std::cout << "[*] Table Name : " << action_node->DATA_LIST[0] << std::endl;
-        std::cout << "[*] Heap File : " << action_node->DATA_LIST[0]+ ".dat" << std::endl;
         std::ifstream heap_read_stream (action_node->DATA_LIST[0] + ".dat" , std::ios::binary);
-
         HeapFile_Metadata current_heapfile_metadata = deserialize_heapfile_metadata<std::ifstream>(heap_read_stream);
 
-        std::cout << "[*] Schema Offset : " << current_heapfile_metadata.schema_offset << std::endl;
-        std::cout << "[*] Page Count : " << current_heapfile_metadata.page_count << std::endl;
-        std::cout << "[*] Record Count : " << current_heapfile_metadata.record_count <<  std::endl;
-        std::cout << "[*] Record Size : " << current_heapfile_metadata.record_size <<  std::endl;
-        std::cout << "[*] Write Page ID : " << current_heapfile_metadata.write_page_id <<  std::endl;
-        std::cout << "[*] Total Offset : " << current_heapfile_metadata.total_offset <<  std::endl;
-        std::cout << "[*] Schema : " << current_heapfile_metadata.schema << std::endl;
-        std::cout << "[*] Attribute Count : " << current_heapfile_metadata.attribute_count << std::endl;
-
         uint64_t max_record_per_page = (PAGE_SIZE - sizeof(page_header)) / current_heapfile_metadata.record_size;
-        std::cout << "[*] Max number of records per page : " << max_record_per_page << std::endl;
-
 
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
         std::vector<search_constraint> data_constraints;
@@ -545,12 +504,9 @@ class Pager
                 read_offset += current_heapfile_metadata.record_size;
             }
         }
-
         heap_read_stream.close();
         return true;
     }
-
-
 
     void update_page_record(void * page_block , uint64_t record_count , uint64_t record_size , std::vector<update_constraint> & update_values)
     {
@@ -593,33 +549,19 @@ class Pager
             deletion_offset += record_size;
         }
     }
+    
     bool delete_from_heap(AST_NODE *& action_node)
     {
-
         if (!this->heap_file_exists(action_node->PAYLOAD))
             return false;
-        std::cout << "[*] Table Name : " << *action_node->PAYLOAD << std::endl;
-        std::cout << "[*] Heap File : " << *action_node->PAYLOAD + ".dat" << std::endl;
-
 
         std::fstream heap_read_stream (*action_node->PAYLOAD + ".dat" , std::ios::in | std::ios::out | std::ios::binary);
         HeapFile_Metadata current_heapfile_metadata = deserialize_heapfile_metadata<std::fstream>(heap_read_stream);
 
-        std::cout << "[*] Schema Offset : " << current_heapfile_metadata.schema_offset << std::endl;
-        std::cout << "[*] Page Count : " << current_heapfile_metadata.page_count << std::endl;
-        std::cout << "[*] Record Count : " << current_heapfile_metadata.record_count <<  std::endl;
-        std::cout << "[*] Record Size : " << current_heapfile_metadata.record_size <<  std::endl;
-        std::cout << "[*] Write Page ID : " << current_heapfile_metadata.write_page_id <<  std::endl;
-        std::cout << "[*] Total Offset : " << current_heapfile_metadata.total_offset <<  std::endl;
-        std::cout << "[*] Schema : " << current_heapfile_metadata.schema << std::endl;
-        std::cout << "[*] Attribute Count : " << current_heapfile_metadata.attribute_count << std::endl;
         uint64_t max_record_per_page = (PAGE_SIZE - sizeof(page_header)) / current_heapfile_metadata.record_size;
-        std::cout << "[*] Max number of records per page : " << max_record_per_page << std::endl;
-
 
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
         std::vector<search_constraint> data_constraints;
-
 
         bool condition_attached = false;
         if (action_node->CHILD) // condition node is attached
@@ -627,10 +569,6 @@ class Pager
             condition_attached = true;
             data_constraints = get_search_constraints(action_node->CHILD , schema_chunks);
         }
-
-        for (std::string attribute : schema_chunks)
-            std::cout << attribute.substr(1) << "\t";
-        std::cout << std::endl;
 
         void * page_read_buffer = malloc(PAGE_SIZE);
         for (int page_counter = 1 ; page_counter <= current_heapfile_metadata.page_count ; page_counter++)
@@ -644,16 +582,6 @@ class Pager
             uint64_t new_page_record_count = page_record_count;
             for (int record_itr = 1 ; record_itr <= page_record_count ; record_itr++)
             {
-                // the record which are being deserialized need to be updated
-                // make the update in the page_read_buffer
-                // could use a bool flag called called any_change , which would be false at the start
-                // but whenever there is even a single update made to the page
-                // set the any_change flag to true
-                // after reading over all the records of the page, if the any_change flag is set
-                // write the entire local page_read_buffer into the disk
-                // for the case of updation , we would need to change the number of rows ,
-                // hence the header value for it would be the same ,
-                // just copy the entire page block to the disk
                 if (condition_attached)
                 {
                     if (match_search_constraints(data_constraints , page_read_buffer , record_itr , current_heapfile_metadata.record_size))
@@ -661,61 +589,44 @@ class Pager
                         delete_page_record(page_read_buffer , record_itr , current_heapfile_metadata.record_size , new_page_record_count);
                         changes_made = true;
                         new_page_record_count--;
+                        current_heapfile_metadata.record_count--;
                     }
                     else
                         read_offset += current_heapfile_metadata.record_size;
-
                 }
                 else // unconditional deletion
                 {
                     delete_page_record(page_read_buffer , record_itr , current_heapfile_metadata.record_size , new_page_record_count);
                     changes_made = true;
                     new_page_record_count--;
+                    current_heapfile_metadata.record_count--;
                 }
             }
-
             if (changes_made)
             {
-                std::cout << "this is the id of the page which is to be updated : " << page_counter << std::endl;
                 uint64_t stream_offset_copy = heap_read_stream.tellg();
                 update_page_to_disk(heap_read_stream , page_read_buffer , new_page_record_count , page_counter , current_heapfile_metadata.total_offset);
                 heap_read_stream.seekg(stream_offset_copy , std::ios::beg);
             }
-            else
-                std::cout << "changes made is false : "  << std::endl;
         }
 
+        update_heapfile_metadata(heap_read_stream , current_heapfile_metadata);
         heap_read_stream.close();
         return true;
     }
 
     bool update_heap(AST_NODE *& action_node)
     {
-
         if (!this->heap_file_exists(action_node->PAYLOAD))
             return false;
-        std::cout << "[*] Table Name : " << *action_node->PAYLOAD << std::endl;
-        std::cout << "[*] Heap File : " << *action_node->PAYLOAD + ".dat" << std::endl;
-
 
         std::fstream heap_read_stream (*action_node->PAYLOAD + ".dat" , std::ios::in | std::ios::out | std::ios::binary);
         HeapFile_Metadata current_heapfile_metadata = deserialize_heapfile_metadata<std::fstream>(heap_read_stream);
 
-        std::cout << "[*] Schema Offset : " << current_heapfile_metadata.schema_offset << std::endl;
-        std::cout << "[*] Page Count : " << current_heapfile_metadata.page_count << std::endl;
-        std::cout << "[*] Record Count : " << current_heapfile_metadata.record_count <<  std::endl;
-        std::cout << "[*] Record Size : " << current_heapfile_metadata.record_size <<  std::endl;
-        std::cout << "[*] Write Page ID : " << current_heapfile_metadata.write_page_id <<  std::endl;
-        std::cout << "[*] Total Offset : " << current_heapfile_metadata.total_offset <<  std::endl;
-        std::cout << "[*] Schema : " << current_heapfile_metadata.schema << std::endl;
-        std::cout << "[*] Attribute Count : " << current_heapfile_metadata.attribute_count << std::endl;
         uint64_t max_record_per_page = (PAGE_SIZE - sizeof(page_header)) / current_heapfile_metadata.record_size;
-        std::cout << "[*] Max number of records per page : " << max_record_per_page << std::endl;
-
 
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
         std::vector<search_constraint> data_constraints;
-
 
         bool condition_attached = false;
         if (action_node->CHILD) // condition node is attached
@@ -723,13 +634,7 @@ class Pager
             condition_attached = true;
             data_constraints = get_search_constraints(action_node->CHILD , schema_chunks);
         }
-
         std::vector<update_constraint> update_values = get_update_constraints(action_node->CHILDREN , schema_chunks);
-
-
-        for (std::string attribute : schema_chunks)
-            std::cout << attribute.substr(1) << "\t";
-        std::cout << std::endl;
 
         void * page_read_buffer = malloc(PAGE_SIZE);
         for (int page_counter = 1 ; page_counter <= current_heapfile_metadata.page_count ; page_counter++)
@@ -742,16 +647,6 @@ class Pager
             bool changes_made = false;
             for (int record_itr = 1 ; record_itr <= page_record_count ; record_itr++)
             {
-                // the record which are being deserialized need to be updated
-                // make the update in the page_read_buffer
-                // could use a bool flag called called any_change , which would be false at the start
-                // but whenever there is even a single update made to the page
-                // set the any_change flag to true
-                // after reading over all the records of the page, if the any_change flag is set
-                // write the entire local page_read_buffer into the disk
-                // for the case of updation , we would need to change the number of rows ,
-                // hence the header value for it would be the same ,
-                // just copy the entire page block to the disk
                 if (condition_attached)
                 {
                     if (match_search_constraints(data_constraints , page_read_buffer , record_itr , current_heapfile_metadata.record_size))
@@ -767,21 +662,16 @@ class Pager
                 }
                 read_offset += current_heapfile_metadata.record_size;
             }
-
             if (changes_made)
             {
-                std::cout << "this is the id of the page which is to be updated : " << page_counter << std::endl;
                 uint64_t stream_offset_copy = heap_read_stream.tellg();
                 update_page_to_disk(heap_read_stream , page_read_buffer , page_record_count , page_counter , current_heapfile_metadata.total_offset);
                 heap_read_stream.seekg(stream_offset_copy , std::ios::beg);
             }
         }
-
         heap_read_stream.close();
         return true;
     }
-
-
 
     void deserialize(void * page_block , uint64_t read_offset ,  std::vector<std::string>& schema_chunks)
     {
