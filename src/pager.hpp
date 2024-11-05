@@ -1,3 +1,4 @@
+
 #ifndef __PAGER_H
 #define __PAGER_H
 
@@ -581,6 +582,111 @@ class Pager
                 }
             }
         }
+    }
+
+    void delete_page_record(void * page_block , uint64_t record_number , uint64_t record_size , uint64_t total_record)
+    {
+        int64_t deletion_offset = sizeof(page_header) + ((record_number - 1) * record_size);
+        for (uint64_t itr = record_number; itr < total_record ; itr++)
+        {
+            memcpy(reinterpret_cast <char *> (page_block) + (deletion_offset) , reinterpret_cast <char *> (page_block) + (deletion_offset + record_size) , record_size);
+            deletion_offset += record_size;
+        }
+    }
+    bool delete_from_heap(AST_NODE *& action_node)
+    {
+
+        if (!this->heap_file_exists(action_node->PAYLOAD))
+            return false;
+        std::cout << "[*] Table Name : " << *action_node->PAYLOAD << std::endl;
+        std::cout << "[*] Heap File : " << *action_node->PAYLOAD + ".dat" << std::endl;
+
+
+        std::fstream heap_read_stream (*action_node->PAYLOAD + ".dat" , std::ios::in | std::ios::out | std::ios::binary);
+        HeapFile_Metadata current_heapfile_metadata = deserialize_heapfile_metadata<std::fstream>(heap_read_stream);
+
+        std::cout << "[*] Schema Offset : " << current_heapfile_metadata.schema_offset << std::endl;
+        std::cout << "[*] Page Count : " << current_heapfile_metadata.page_count << std::endl;
+        std::cout << "[*] Record Count : " << current_heapfile_metadata.record_count <<  std::endl;
+        std::cout << "[*] Record Size : " << current_heapfile_metadata.record_size <<  std::endl;
+        std::cout << "[*] Write Page ID : " << current_heapfile_metadata.write_page_id <<  std::endl;
+        std::cout << "[*] Total Offset : " << current_heapfile_metadata.total_offset <<  std::endl;
+        std::cout << "[*] Schema : " << current_heapfile_metadata.schema << std::endl;
+        std::cout << "[*] Attribute Count : " << current_heapfile_metadata.attribute_count << std::endl;
+        uint64_t max_record_per_page = (PAGE_SIZE - sizeof(page_header)) / current_heapfile_metadata.record_size;
+        std::cout << "[*] Max number of records per page : " << max_record_per_page << std::endl;
+
+
+        std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
+        std::vector<search_constraint> data_constraints;
+
+
+        bool condition_attached = false;
+        if (action_node->CHILD) // condition node is attached
+        {
+            condition_attached = true;
+            data_constraints = get_search_constraints(action_node->CHILD , schema_chunks);
+        }
+
+        for (std::string attribute : schema_chunks)
+            std::cout << attribute.substr(1) << "\t";
+        std::cout << std::endl;
+
+        void * page_read_buffer = malloc(PAGE_SIZE);
+        for (int page_counter = 1 ; page_counter <= current_heapfile_metadata.page_count ; page_counter++)
+        {
+            heap_read_stream.read(reinterpret_cast <char *> (page_read_buffer) , PAGE_SIZE);
+            uint64_t page_record_count;
+            memcpy(&page_record_count , page_read_buffer , sizeof(uint64_t));
+            uint64_t read_offset = sizeof(page_header);
+
+            bool changes_made = false;
+            uint64_t new_page_record_count = page_record_count;
+            for (int record_itr = 1 ; record_itr <= page_record_count ; record_itr++)
+            {
+                // the record which are being deserialized need to be updated
+                // make the update in the page_read_buffer
+                // could use a bool flag called called any_change , which would be false at the start
+                // but whenever there is even a single update made to the page
+                // set the any_change flag to true
+                // after reading over all the records of the page, if the any_change flag is set
+                // write the entire local page_read_buffer into the disk
+                // for the case of updation , we would need to change the number of rows ,
+                // hence the header value for it would be the same ,
+                // just copy the entire page block to the disk
+                if (condition_attached)
+                {
+                    if (match_search_constraints(data_constraints , page_read_buffer , record_itr , current_heapfile_metadata.record_size))
+                    {
+                        delete_page_record(page_read_buffer , record_itr , current_heapfile_metadata.record_size , new_page_record_count);
+                        changes_made = true;
+                        new_page_record_count--;
+                    }
+                    else
+                        read_offset += current_heapfile_metadata.record_size;
+
+                }
+                else // unconditional deletion
+                {
+                    delete_page_record(page_read_buffer , record_itr , current_heapfile_metadata.record_size , new_page_record_count);
+                    changes_made = true;
+                    new_page_record_count--;
+                }
+            }
+
+            if (changes_made)
+            {
+                std::cout << "this is the id of the page which is to be updated : " << page_counter << std::endl;
+                uint64_t stream_offset_copy = heap_read_stream.tellg();
+                update_page_to_disk(heap_read_stream , page_read_buffer , new_page_record_count , page_counter , current_heapfile_metadata.total_offset);
+                heap_read_stream.seekg(stream_offset_copy , std::ios::beg);
+            }
+            else
+                std::cout << "changes made is false : "  << std::endl;
+        }
+
+        heap_read_stream.close();
+        return true;
     }
 
     bool update_heap(AST_NODE *& action_node)
