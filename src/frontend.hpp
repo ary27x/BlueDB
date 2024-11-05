@@ -918,7 +918,7 @@ class Parser
         /*
         consider the two statements 
         
-        1) update students :: name == "aryan" && id = 7 -> name = "aryan kumar"
+        1) update students :: name == "aryan" && id == 7 -> name = "aryan kumar"
         this would update all the records-> name to aryan kumar , where the name 
         is aryan and id = 7
 

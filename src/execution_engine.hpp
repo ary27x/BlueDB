@@ -117,6 +117,14 @@ class execution_engine
     bool handle_update(AST_NODE *& action_node)
     {
 
+        std::cout << "this is from the handle update block : " << std::endl;
+        /*
+        update students :: id == 2 -> name = "KUMAR"
+        */
+        bool status = main_pager->update_heap(action_node);
+        if (!status)
+            std::cout << "There was some error while trying to update the database";
+
     }
     bool handle_remove(AST_NODE *& action_node)
     {
