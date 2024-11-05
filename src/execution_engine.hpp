@@ -20,7 +20,7 @@ class execution_engine
     execution_engine()
     {
         main_pager = new Pager();
-    } 
+    }
 
     void generate_records(uint64_t data)
     {
@@ -47,16 +47,16 @@ class execution_engine
             }
 
             std::vector<AST_NODE *> buffer_vector;
-            // int id , string name , int age 
+            // int id , string name , int age
             AST_NODE * id_node = new AST_NODE();
             AST_NODE * name_node = new AST_NODE();
             AST_NODE * age_node = new AST_NODE();
-            
+
 
             id_node->NODE_TYPE = NODE_INT;
             name_node->NODE_TYPE = NODE_STRING;
             age_node->NODE_TYPE = NODE_INT;
-            
+
             std::string * id_value = new std::string(std::to_string(itr));
             std::string * name_value = new std::string("n" + std::to_string(itr));
             std::string * age_value = new std::string(std::to_string(rand() % 100));
@@ -73,25 +73,25 @@ class execution_engine
         }
         action_node->MULTI_DATA = multi_data_records;
         main_pager->add_to_heap(action_node);
-        
+
 
         std::time_t end_time = std::time(nullptr);
         std::cout << "End time : " <<  end_time << std::endl;
 
         std::cout << "Time taken : " << end_time - start_time << " seconds "<< std::endl;
-    
+
     }
 
     bool handle_new(AST_NODE *& action_node)
     {
         // to the handle checking
-        // if the name of the table already exists, then one should 
+        // if the name of the table already exists, then one should
         // return false from here
-        // else then proceed with teh main_pager create nmew haedp 
+        // else then proceed with teh main_pager create nmew haedp
         bool status = main_pager->create_new_heap(action_node);
         if (!status)
             std::cout << "Error , the given table already exists in the table ! " << std::endl;
-        else 
+        else
             std::cout << "the data was written : " << std::endl;
     }
     bool handle_add(AST_NODE *& action_node)
@@ -108,16 +108,16 @@ class execution_engine
         bool status = main_pager->get_heap(action_node);
         if (!status)
             std::cout << "Error , the given table does not exist in the table ! " << std::endl;
-        
+
         std::time_t end_time = std::time(nullptr);
 
         std::cout << "[*] Time taken : " << end_time - start_time << " seconds "<< std::endl;
-    
+
     }
     bool handle_update(AST_NODE *& action_node)
     {
 
-        std::cout << "this is from the handle update block : " << std::endl;
+        std::cout << "this is from the new update block  : " << std::endl;
         /*
         update students :: id == 2 -> name = "KUMAR"
         */
@@ -128,25 +128,25 @@ class execution_engine
     }
     bool handle_remove(AST_NODE *& action_node)
     {
-
+        main_pager->delete_from_heap(action_node);
     }
 
     bool handle_exit(AST_NODE *& action_node)
     {
 
     }
-    
+
 
     bool execute (AST_NODE *& action_node)
     {
         switch(action_node->NODE_TYPE)
         {
-            case NODE_NEW    : return this->handle_new(action_node); 
-            case NODE_ADD    : return this->handle_add(action_node); 
-            case NODE_PRINT  : return this->handle_print(action_node); 
-            case NODE_UPDATE : return this->handle_update(action_node); 
+            case NODE_NEW    : return this->handle_new(action_node);
+            case NODE_ADD    : return this->handle_add(action_node);
+            case NODE_PRINT  : return this->handle_print(action_node);
+            case NODE_UPDATE : return this->handle_update(action_node);
             case NODE_REMOVE : return this->handle_remove(action_node);
-            case NODE_EXIT   : return this->handle_exit(action_node); 
+            case NODE_EXIT   : return this->handle_exit(action_node);
         }
     }
 };
