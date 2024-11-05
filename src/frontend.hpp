@@ -11,8 +11,8 @@
 // incldue comments using the ~ operator
 
 // currently the data type support is only for int , float and string types
-// add to the code such that the string support is extended for other 
-// data types as well 
+// add to the code such that the string support is extended for other
+// data types as well
 
 // add the ability to sort the results by ascending or descending order
 
@@ -20,24 +20,24 @@
 #define SUCCESS   "\e[0;32m"
 #define DEFAULT   "\e[0;37m"
 #define DB_PROMPT "blue_db : " // this is subject to change
-std::string InputBuffer;  
+std::string InputBuffer;
 
 
 
 typedef enum
 {
     LEXER_SUCCESS ,
-    LEXER_FAIL 
+    LEXER_FAIL
 } LEXER_STATUS;
 
 typedef enum
 {
     PARSER_SUCCESS ,
-    PARSER_FAIL 
+    PARSER_FAIL
 } PARSER_STATUS;
 
 
-typedef enum 
+typedef enum
 {
     TOKEN_INT,
     TOKEN_FLOAT,
@@ -46,62 +46,62 @@ typedef enum
     TOKEN_BOOL,
     TOKEN_DATE,
     TOKEN_TIME,
-    TOKEN_NEW, 
-    TOKEN_DOUBLE_COLON, 
+    TOKEN_NEW,
+    TOKEN_DOUBLE_COLON,
     TOKEN_DOT,
     TOKEN_COMMA,
-    TOKEN_ADD, 
+    TOKEN_ADD,
     TOKEN_LEFT_SQR_BRACKET,
     TOKEN_RIGHT_SQR_BRACKET,
-    TOKEN_LEFT_PAREN, 
+    TOKEN_LEFT_PAREN,
     TOKEN_RIGHT_PAREN,
     TOKEN_STRING_DATA,
-    TOKEN_INT_DATA, 
+    TOKEN_INT_DATA,
     TOKEN_FLOAT_DATA,
     TOKEN_TRUE,
     TOKEN_FALSE,
-    TOKEN_PRINT, 
+    TOKEN_PRINT,
     TOKEN_REMOVE,
-    TOKEN_UPDATE , 
-    TOKEN_NOT, 
-    TOKEN_OR , 
-    TOKEN_AND , 
-    TOKEN_ARROW , 
-    TOKEN_EQUAL_TO, 
-    TOKEN_EQUALS , 
-    TOKEN_NOT_EQUALS , 
-    TOKEN_LESS_THAN , 
+    TOKEN_UPDATE ,
+    TOKEN_NOT,
+    TOKEN_OR ,
+    TOKEN_AND ,
+    TOKEN_ARROW ,
+    TOKEN_EQUAL_TO,
+    TOKEN_EQUALS ,
+    TOKEN_NOT_EQUALS ,
+    TOKEN_LESS_THAN ,
     TOKEN_GREATER_THAN,
-    TOKEN_LESS_THAN_EQUALS, 
-    TOKEN_GREATER_THAN_EQUALS, 
-    TOKEN_ID , 
+    TOKEN_LESS_THAN_EQUALS,
+    TOKEN_GREATER_THAN_EQUALS,
+    TOKEN_ID ,
     TOKEN_EXIT,
     TOKEN_END_OF_INPUT
 } TOKEN_SET;
 
 
-typedef enum 
+typedef enum
 {
-    NODE_NEW, 
-    NODE_ADD, 
-    NODE_PRINT, 
-    NODE_UPDATE , 
+    NODE_NEW,
+    NODE_ADD,
+    NODE_PRINT,
+    NODE_UPDATE ,
     NODE_REMOVE ,
-    NODE_EXIT, 
-    NODE_NOT, 
-    NODE_AND, 
+    NODE_EXIT,
+    NODE_NOT,
+    NODE_AND,
     NODE_OR,
-    NODE_CONDITION, 
+    NODE_CONDITION,
     NODE_CONDITION_EQUALS ,
-    NODE_CONDITION_NOT_EQUALS, 
+    NODE_CONDITION_NOT_EQUALS,
     NODE_CONDITION_GREATER_THAN ,
     NODE_CONDITION_LESS_THAN ,
-    NODE_CONDITION_LESS_THAN_EQUALS, 
-    NODE_CONDITION_GREATER_THAN_EQUALS,  
+    NODE_CONDITION_LESS_THAN_EQUALS,
+    NODE_CONDITION_GREATER_THAN_EQUALS,
     NODE_SUB_VALUES,
     NODE_STRING,
     NODE_INT,
-    NODE_FLOAT, 
+    NODE_FLOAT,
 } NODE_SET;
 
 
@@ -132,8 +132,8 @@ std::unordered_map <TOKEN_SET , NODE_SET> REL_SET = {
 };
 
 std::unordered_map <TOKEN_SET , std::string> LOG_SET = {
-    {TOKEN_AND , "&&"}, 
-    {TOKEN_OR , "||"}, 
+    {TOKEN_AND , "&&"},
+    {TOKEN_OR , "||"},
 };
 
 
@@ -213,7 +213,7 @@ std::string tokenTypeToString(TOKEN_SET REQUIRED_TOKEN)
        case TOKEN_GREATER_THAN_EQUALS  : return "TOKEN_GREATER_THAN_EQUALS";
        case TOKEN_ID                   : return "TOKEN_ID";
        case TOKEN_EXIT                 : return "TOKEN_EXIT";
-       case TOKEN_END_OF_INPUT         : return "TOKEN_END_OF_INPUT";    
+       case TOKEN_END_OF_INPUT         : return "TOKEN_END_OF_INPUT";
     }
     return "[!] ERROR : UNIDENTIFIED TOKEN : " + REQUIRED_TOKEN;
 }
@@ -238,30 +238,30 @@ std::unordered_map <std::string , TOKEN_SET> KEYWORD_MAP =  {
 
 class Lexer
 {
-    private : 
-   
+    private :
+
     int cursor;
     int length;
     char current;
     std::string LocalInputBuffer;
     std::vector <TOKEN *> TOKEN_LIST;
     bool stringParsingError;
-    
+
     char advance()
     {
         if (cursor == length - 1) //this means that we are at the end of the input buffer
         {
             current = '\0';
             return current;
-        } 
-        else 
+        }
+        else
         {
             current = LocalInputBuffer[++cursor];
             return current;
         }
     }
 
-    void skipWhiteSpaces() // deal with trailing 
+    void skipWhiteSpaces() // deal with trailing
     {
         while (current == ' ' && current != '\0')
             advance();
@@ -295,7 +295,7 @@ class Lexer
         TOKEN * newToken = new TOKEN;
         newToken->position = cursor;
         std::string temporaryBuffer = "";
-        
+
         temporaryBuffer.push_back(current);
         advance();
 
@@ -326,8 +326,8 @@ class Lexer
             temporaryBuffer.push_back(current);
             advance();
         }
-   
-        // 9. -> float WE NEED TO HANDLE THIS 
+
+        // 9. -> float WE NEED TO HANDLE THIS
 
         newToken->TOKEN_TYPE = decimal ? TOKEN_FLOAT_DATA : TOKEN_INT_DATA;
         newToken->VALUE = temporaryBuffer;
@@ -341,7 +341,7 @@ class Lexer
         for (TOKEN * CURRENT_TOKEN : TOKEN_LIST)
         {
             std::cout << ++counter << ") " <<  CURRENT_TOKEN->VALUE  << " ";
-            std::cout << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << std::endl; 
+            std::cout << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << std::endl;
         }
     }
 
@@ -349,7 +349,7 @@ class Lexer
     {
         TOKEN * newToken = new TOKEN;
         newToken->position = cursor;
-        newToken->TOKEN_TYPE = NEW_TOKEN_TYPE; 
+        newToken->TOKEN_TYPE = NEW_TOKEN_TYPE;
         newToken->VALUE = current;
         advance();
         return newToken;
@@ -367,7 +367,7 @@ class Lexer
         return LEXER_FAIL;
     }
 
-    public : 
+    public :
     Lexer()
     {
     }
@@ -391,13 +391,13 @@ class Lexer
     {
         if (cursor + offset >= length)
             return '\0';
-        else 
+        else
             return LocalInputBuffer[cursor + offset];
     }
     LEXER_STATUS tokenize()
     {
         while (current)
-        {   
+        {
             skipWhiteSpaces();
             if (isalpha(current) || current == '_')
                 TOKEN_LIST.push_back(tokenizeID());
@@ -428,7 +428,7 @@ class Lexer
                     break;
                 }
 
-                // replace all the advance functions with the seek function 
+                // replace all the advance functions with the seek function
 
                 case '<':
                 {
@@ -437,7 +437,7 @@ class Lexer
                         advance();
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LESS_THAN_EQUALS));
                     }
-                    else    
+                    else
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_LESS_THAN));
                     break;
                 }
@@ -448,7 +448,7 @@ class Lexer
                         advance();
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_GREATER_THAN_EQUALS));
                     }
-                    else 
+                    else
                         TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_GREATER_THAN));
                     break;
                 }
@@ -525,7 +525,7 @@ class Lexer
                     break;
                 }
                 case '\0' : break;
-                default : 
+                default :
                 {std::cout << "this is from here : " ;return throwLexerError();}
             }
             }
@@ -558,7 +558,7 @@ class Parser
                 std::cout << currentCharacter;
             positionCounter++;
         }
-        exit(0); // change the behaviour of this 
+        exit(0); // change the behaviour of this
         return PARSER_FAIL;
     }
 
@@ -588,8 +588,8 @@ class Parser
     {
         if (CURRENT_TOKEN->TOKEN_TYPE != REQUIRED_TOKEN)
         {
-            throwVerboseSyntaxError(REQUIRED_TOKEN);            
-            syntaxError = true; // this 
+            throwVerboseSyntaxError(REQUIRED_TOKEN);
+            syntaxError = true; // this
             return CURRENT_TOKEN;
         }
         token_number++;
@@ -603,7 +603,7 @@ class Parser
         proceed(REQUIRED_TOKEN);
         return bufferPointer;
     }
-    
+
     AST_NODE * parseCONDITION()
     {
         AST_NODE * CONDITION_NODE = new AST_NODE;
@@ -640,14 +640,14 @@ class Parser
                     }
                     buffer_pointer->SUB_PAYLOAD = construct;
                     break;
-                } 
-                case TOKEN_INT_DATA : 
+                }
+                case TOKEN_INT_DATA :
                 {
                     buffer_pointer->HELPER_TOKEN = TOKEN_INT_DATA;
                     buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_INT_DATA)->VALUE;
                     break;
                 }
-                case TOKEN_FLOAT_DATA : 
+                case TOKEN_FLOAT_DATA :
                 {
                     buffer_pointer->HELPER_TOKEN = TOKEN_FLOAT_DATA;
                     buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_FLOAT_DATA)->VALUE;
@@ -658,7 +658,7 @@ class Parser
                     buffer_pointer->HELPER_TOKEN = TOKEN_STRING_DATA;
                     buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_STRING_DATA)->VALUE;
                     break;
-                } 
+                }
                 default : throwSyntaxError();
             }
             CONDITION_NODE->CHILDREN.push_back(buffer_pointer);
@@ -673,10 +673,10 @@ class Parser
 
         return CONDITION_NODE;
     }
-    
+
     PARSER_STATUS parseNEW()
     {
-        /* 
+        /*
         new <table> :: <type> <name> , <type> <name>
         <table> would go in the ->payload
         <columns> would go in the ->children
@@ -694,21 +694,21 @@ class Parser
             buffer_pointer = new AST_NODE;
             switch(CURRENT_TOKEN->TOKEN_TYPE)
             {
-                case TOKEN_INT : 
+                case TOKEN_INT :
                 {
                     proceed(TOKEN_INT);
                     buffer_pointer->NODE_TYPE = NODE_INT;
                     buffer_pointer->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
                     break;
                 }
-                case TOKEN_STRING: 
+                case TOKEN_STRING:
                 {
                     proceed(TOKEN_STRING);
                     buffer_pointer->NODE_TYPE = NODE_STRING;
                     buffer_pointer->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
                     break;
                 }
-                case TOKEN_FLOAT : 
+                case TOKEN_FLOAT :
                 {
                     proceed(TOKEN_FLOAT);
                     buffer_pointer->NODE_TYPE = NODE_FLOAT;
@@ -720,9 +720,9 @@ class Parser
             EVALUATED_NODE->CHILDREN.push_back(buffer_pointer);
 
         if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_COMMA)
-            break; 
+            break;
         else
-            proceed(TOKEN_COMMA); 
+            proceed(TOKEN_COMMA);
         }
         check(TOKEN_END_OF_INPUT);
         return PARSER_SUCCESS;
@@ -773,14 +773,14 @@ class Parser
                 buffer_vector.push_back(buffer_ast_node);
                 if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_COMMA)
                     break;
-                else 
+                else
                     proceed(TOKEN_COMMA);
             }
             proceed(TOKEN_RIGHT_SQR_BRACKET);
             EVALUATED_NODE->MULTI_DATA.push_back(buffer_vector);
             if (CURRENT_TOKEN->TOKEN_TYPE != TOKEN_COMMA)
                 break;
-            else    
+            else
                 proceed(TOKEN_COMMA);
         }
         check(TOKEN_END_OF_INPUT);
@@ -809,13 +809,13 @@ class Parser
                 proceed(TOKEN_COMMA);
                 continue;
             }
-            else 
+            else
                 break;
         }
         switch(CURRENT_TOKEN->TOKEN_TYPE)
         {
             case TOKEN_END_OF_INPUT: return PARSER_SUCCESS;
-            case TOKEN_DOUBLE_COLON: 
+            case TOKEN_DOUBLE_COLON:
             {
                 proceed(TOKEN_DOUBLE_COLON);
                 EVALUATED_NODE->CHILD = parseCONDITION();
@@ -825,11 +825,11 @@ class Parser
             default : return throwSyntaxError();
         }
     }
-    
+
     PARSER_STATUS parseREMOVE()
     {
         /*
-        remove students 
+        remove students
         remove students :: name = "aryan"
         remove studnets :: students.name = "aryan"
         */
@@ -842,7 +842,7 @@ class Parser
         switch(CURRENT_TOKEN->TOKEN_TYPE)
         {
             case TOKEN_END_OF_INPUT : return PARSER_SUCCESS;
-            case TOKEN_DOUBLE_COLON : 
+            case TOKEN_DOUBLE_COLON :
             {
                 proceed(TOKEN_DOUBLE_COLON);
                 EVALUATED_NODE->CHILD = parseCONDITION();
@@ -852,7 +852,7 @@ class Parser
             default : return throwSyntaxError();
         }
     }
-   
+
     void parseUPDATE_VALUES(AST_NODE *& ROOT_NODE)
     {
         // id = <value>
@@ -861,37 +861,37 @@ class Parser
         while (true)
         {
             buffer_pointer = new AST_NODE;
-            std::string construct = "";
-            construct += checkAndProceed(TOKEN_ID)->VALUE;
+            std::string  * construct = new std::string;
+            *construct += checkAndProceed(TOKEN_ID)->VALUE;
             if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
             {
                 proceed(TOKEN_DOT);
-                construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+                *construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
             }
-            buffer_pointer->PAYLOAD = &construct;
+            buffer_pointer->PAYLOAD = construct;
             proceed(TOKEN_EQUAL_TO);
             switch(CURRENT_TOKEN->TOKEN_TYPE)
             {
                 case TOKEN_ID :
                 {
                     buffer_pointer->HELPER_TOKEN = TOKEN_ID;
-                    std::string construct;
-                    construct += checkAndProceed(TOKEN_ID)->VALUE;
+                    std::string * construct = new std::string;
+                    *construct += checkAndProceed(TOKEN_ID)->VALUE;
                     if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_DOT)
                     {
                         proceed(TOKEN_DOT);
-                        construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
+                        *construct += "." + checkAndProceed(TOKEN_ID)->VALUE;
                     }
-                    buffer_pointer->SUB_PAYLOAD = &construct;
+                    buffer_pointer->SUB_PAYLOAD = construct;
                     break;
-                } 
-                case TOKEN_INT_DATA : 
+                }
+                case TOKEN_INT_DATA :
                 {
                     buffer_pointer->HELPER_TOKEN = TOKEN_INT_DATA;
                     buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_INT_DATA)->VALUE;
                     break;
                 }
-                case TOKEN_FLOAT_DATA : 
+                case TOKEN_FLOAT_DATA :
                 {
                     buffer_pointer->HELPER_TOKEN = TOKEN_FLOAT_DATA;
                     buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_FLOAT_DATA)->VALUE;
@@ -902,7 +902,7 @@ class Parser
                     buffer_pointer->HELPER_TOKEN = TOKEN_STRING_DATA;
                     buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_STRING_DATA)->VALUE;
                     break;
-                } 
+                }
                 default : throwSyntaxError();
             }
             ROOT_NODE->CHILDREN.push_back(buffer_pointer);
@@ -916,16 +916,16 @@ class Parser
     PARSER_STATUS parseUPDATE()
     {
         /*
-        consider the two statements 
-        
+        consider the two statements
+
         1) update students :: name == "aryan" && id == 7 -> name = "aryan kumar"
-        this would update all the records-> name to aryan kumar , where the name 
+        this would update all the records-> name to aryan kumar , where the name
         is aryan and id = 7
 
-        2) updating all the element in the table : 
+        2) updating all the element in the table :
         update students -> name = "aryan kumar"
         this would unconditionally update all the elements in the table
-        
+
         update students :: name == "aryan" || id < 5 -> name = "aryan kumar" , id = 8
         update students -> name = "aryan kumar"
 
@@ -941,7 +941,7 @@ class Parser
 
         switch (CURRENT_TOKEN->TOKEN_TYPE)
         {
-            case TOKEN_DOUBLE_COLON : 
+            case TOKEN_DOUBLE_COLON :
             {
                 proceed(TOKEN_DOUBLE_COLON);
                 EVALUATED_NODE->CHILD = parseCONDITION();
@@ -949,7 +949,7 @@ class Parser
                 parseUPDATE_VALUES(EVALUATED_NODE);
                 break;
             }
-            case TOKEN_ARROW : 
+            case TOKEN_ARROW :
             {
                 proceed(TOKEN_ARROW);
                 parseUPDATE_VALUES(EVALUATED_NODE);
@@ -973,7 +973,7 @@ class Parser
         return PARSER_SUCCESS;
     }
     public  :
-    Parser() {} 
+    Parser() {}
     AST_NODE * EVALUATED_NODE;
 
     void initialize(std::vector<TOKEN *> * TOKEN_LIST_ADDRESS)
@@ -981,7 +981,7 @@ class Parser
         LOCAL_COPY_TOKEN_STREAM.clear();
         LOCAL_COPY_TOKEN_STREAM = *(TOKEN_LIST_ADDRESS);
         token_number = 0;
-        CURRENT_TOKEN = LOCAL_COPY_TOKEN_STREAM[token_number]; 
+        CURRENT_TOKEN = LOCAL_COPY_TOKEN_STREAM[token_number];
         syntaxError = false;
     }
 
@@ -994,7 +994,7 @@ class Parser
                 case TOKEN_PRINT  : return parsePRINT();
                 case TOKEN_REMOVE : return parseREMOVE();
                 case TOKEN_UPDATE : return parseUPDATE();
-                case TOKEN_EXIT   : return parseEXIT();                
+                case TOKEN_EXIT   : return parseEXIT();
                 default           : return throwSyntaxError();
             }
     }
@@ -1002,12 +1002,12 @@ class Parser
 
 class EvaluationWrapper
 {
-    private : 
+    private :
     Lexer * MAIN_LEXER;
     Parser * MAIN_PARSER;
     int commandCount;
 
-    public : 
+    public :
     EvaluationWrapper()
     {
         MAIN_LEXER = new Lexer();
@@ -1022,11 +1022,11 @@ class EvaluationWrapper
         MAIN_LEXER->initialize(InputBuffer);
         LEXER_STATUS CURRENT_LEXER_STATUS =  MAIN_LEXER->tokenize();
         std::vector<TOKEN *>  * temp = MAIN_LEXER->getTokenStream();
-        
+
         // USING THE PARSER TO PARSE THE TOKEN_STREAM
         PARSER_STATUS CURRENT_PARSER_STATUS;
         if (CURRENT_LEXER_STATUS == LEXER_SUCCESS) // could make use of assert here to make things cleaner
-            // and write cleaner and more understandable code 
+            // and write cleaner and more understandable code
         {
             MAIN_PARSER->initialize(MAIN_LEXER->getTokenStream());
             CURRENT_PARSER_STATUS = MAIN_PARSER->parse();
@@ -1036,7 +1036,7 @@ class EvaluationWrapper
         commandCount++;
         if (CURRENT_LEXER_STATUS == LEXER_FAIL || CURRENT_PARSER_STATUS == PARSER_FAIL)
             std::cout << FAIL << "$ Command ID -> " << commandCount << " failed in " << time.count() << "ms\n\n" << DEFAULT;
-        else 
+        else
             std::cout << SUCCESS << "$ Command ID -> " << commandCount << " executed in " << time.count() << "ms\n\n" << DEFAULT;
         return MAIN_PARSER->EVALUATED_NODE;
     }
