@@ -9,14 +9,14 @@ int main()
     EvaluationWrapper * main_io = new EvaluationWrapper();
     execution_engine * main_exec_engine = new execution_engine();
     
-    // std::cout <<  "test write data ? ";
-    // uint64_t data;
-    // std::cin >> data;
-    // if (data)
-    // {
-    //     main_exec_engine->generate_records(data);
-    // }
-    // std::cin.ignore();
+    std::cout <<  "test write data ? ";
+    uint64_t data;
+    std::cin >> data;
+    if (data)
+    {
+        main_exec_engine->generate_records(data);
+    }
+    std::cin.ignore();
 
     while (true)
     {

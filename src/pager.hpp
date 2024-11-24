@@ -1,4 +1,3 @@
-
 #ifndef __PAGER_H
 #define __PAGER_H
 
@@ -8,7 +7,11 @@
 #include <string>
 #include <unordered_map>
 #include <cstring>
+#include <algorithm>
+
 #include "frontend.hpp"
+#include "btree.hpp"
+
 #define PAGE_SIZE 4096
 
 struct search_constraint
@@ -46,13 +49,13 @@ std::unordered_map <NODE_SET , char> schema_type_conversion = {
 std::unordered_map<TOKEN_SET , uint64_t> token_set_size_converter = {
     {TOKEN_INT_DATA , sizeof(uint64_t)},
     {TOKEN_FLOAT_DATA , sizeof(float)},
-    {TOKEN_STRING_DATA , 20}
+    {TOKEN_STRING_DATA , 40}
 };
 
 std::unordered_map <char , uint64_t> size_conversion = {
     {'i' , sizeof(uint64_t)},
     {'f' , sizeof(float)},
-    {'s' , 20}, // change this behaviour in the parser
+    {'s' , 40}, // change this behaviour in the parser
 };
 
 
@@ -93,18 +96,22 @@ struct HeapFile_Metadata
     uint64_t write_page_id;
     uint64_t attribute_count;
     uint64_t schema_offset;
+    uint64_t primary_key_string_offset;
     std::string schema;
+    std::string primary_key_string;
     HeapFile_Metadata(){};
-    HeapFile_Metadata(std::string _schema , uint64_t _record_size)
+    HeapFile_Metadata(std::string _schema , uint64_t _record_size , std::string _primary_key_string)
     {
         schema = _schema;
+        primary_key_string = _primary_key_string;
         schema_offset = _schema.length();
+        primary_key_string_offset = _primary_key_string.length();
         record_size = _record_size;
         record_count = 0;
         page_count = 0;
         write_page_id = 0;
         attribute_count = get_attribute_count(_schema);
-        total_offset = sizeof(uint64_t) * 7 + schema_offset;
+        total_offset = sizeof(uint64_t) * 8 + schema_offset + primary_key_string_offset;
     }
 
 };
@@ -126,22 +133,50 @@ class Pager
     {
         std::string schema = "";
         for (AST_NODE * current_attribute : table_attribute)
-            schema.append(schema_type_conversion[current_attribute->NODE_TYPE] + *current_attribute->PAYLOAD + ';');
+        {
+            if (current_attribute->NODE_TYPE == NODE_STRING)
+                schema.append(schema_type_conversion[current_attribute->NODE_TYPE]  + *current_attribute->SUB_PAYLOAD+ *current_attribute->PAYLOAD + ';');
+            else
+                schema.append(schema_type_conversion[current_attribute->NODE_TYPE] + *current_attribute->PAYLOAD + ';');
+
+        }
         schema.pop_back(); // removing the trailing ; to save a byte
         return schema;
+    }
+
+    int extract_string_size(std::string table_schema , int offset)
+    {
+        offset++;
+        std::string attribute_size = "";
+        while (isdigit(table_schema[offset]))
+        {
+            attribute_size += table_schema[offset];
+            offset++;
+        }
+        return std::stoi(attribute_size);
     }
 
     uint64_t get_size(std::string& table_schema)
     {
         uint64_t record_size = 0;
         int iterator_counter = 0;
-        record_size += size_conversion[table_schema[0]];
+
+        if (table_schema[0] == 's')
+            record_size += extract_string_size(table_schema , 0);
+        else
+            record_size += size_conversion[table_schema[0]];
         while (iterator_counter < table_schema.length())
         {
             if (table_schema[iterator_counter] == ';')
-                record_size += size_conversion[table_schema[iterator_counter + 1]];
+            {
+                if (table_schema[iterator_counter + 1] == 's')
+                    record_size += extract_string_size(table_schema , iterator_counter + 1);
+                else
+                    record_size += size_conversion[table_schema[iterator_counter + 1]];
+            }
             iterator_counter++;
         }
+
         return record_size;
     }
     
@@ -185,7 +220,7 @@ class Pager
                 exit(1);
             }
             switch(current_attribute->NODE_TYPE)
-            {
+            { 
                 case NODE_INT :
                 {
                     uint64_t type_cast_buffer = std::stoi(*current_attribute->PAYLOAD);
@@ -201,16 +236,37 @@ class Pager
                 }
                 case NODE_STRING :
                 {
+
+                    // just need to do 3 things here
+                    // get the dynamic string size from the schema chunk
+                    // if there is an underflow , pad the string accordingly
+                    // if there is an overflow , slice the string from the end accordingly
+
+                    int string_size = get_string_size_from_chunk(current_schema_chunk);
+
                     std::string padded_string = *current_attribute->PAYLOAD;
-                    uint64_t required_padding_size = size_conversion[current_schema_chunk[0]] - padded_string.length();
-                    for (int i = 0 ; i < required_padding_size ; i++)
-                        padded_string.push_back('\0');
-                    memcpy(static_cast<char *> (serialized_block) + offset_accumalator , padded_string.data() , size_conversion[current_schema_chunk[0]]);
+
+                    if (padded_string.size() > string_size) // overflow
+                    {
+                        uint64_t removal_length = padded_string.size() - string_size;
+                        while(--removal_length)
+                            padded_string.pop_back(); // trimming the string to handle the overflow 
+                    }
+                    else if (padded_string.size() < string_size) // underflow
+                    {
+                        uint64_t required_padding_size = string_size - padded_string.length();
+                        for (int i = 0 ; i < required_padding_size ; i++)
+                            padded_string.push_back('\0'); // padding the string with null bytes
+                    }
+                    memcpy(static_cast<char *> (serialized_block) + offset_accumalator , padded_string.data() , string_size);
                     break;
                 }
 
             }
-            offset_accumalator += size_conversion[current_schema_chunk[0]];
+            if (current_attribute->NODE_TYPE == NODE_STRING)
+                offset_accumalator += get_string_size_from_chunk(current_schema_chunk);
+            else
+                offset_accumalator += size_conversion[current_schema_chunk[0]];
         }
         return serialized_block;
     }
@@ -229,6 +285,10 @@ class Pager
 
         // attaching the dynamic schema to the header
         heap_write_stream.write(required_headers.schema.c_str() , required_headers.schema_offset);
+        
+        heap_write_stream.write(reinterpret_cast<char *> (&required_headers.primary_key_string_offset) , sizeof(uint64_t));
+        heap_write_stream.write(required_headers.primary_key_string.c_str() , required_headers.primary_key_string_offset);
+
     }
 
     void update_heapfile_metadata(std::fstream& heap_write_stream , HeapFile_Metadata & required_headers)
@@ -245,6 +305,10 @@ class Pager
 
         // attaching the dynamic schema to the header
         heap_write_stream.write(required_headers.schema.c_str() , required_headers.schema_offset);
+
+        heap_write_stream.write(reinterpret_cast<char *> (&required_headers.primary_key_string_offset) , sizeof(uint64_t));
+        heap_write_stream.write(required_headers.primary_key_string.c_str() , required_headers.primary_key_string_offset);
+
     }
 
     void update_page_to_disk(std::fstream& heap_write_stream , void * new_page_block , uint64_t record_count , uint64_t page_number , uint64_t total_offset)
@@ -278,6 +342,12 @@ class Pager
 
         std::fstream heap_write_stream(*action_node->PAYLOAD + ".dat" , std::ios::in | std::ios::out | std::ios::binary );
 
+        // std::string index_name = "id.dat";
+
+        // BTree<key_container<int> , int, 100> index_tree(sizeof(int));
+
+        // index_tree.load(index_name);
+
         void * page_read_buffer = malloc(PAGE_SIZE);
         heap_write_stream.seekp(current_heap_metadata.total_offset + (current_heap_metadata.page_count - 1) * PAGE_SIZE , std::ios::beg);
         heap_write_stream.read(reinterpret_cast <char *> (page_read_buffer) , PAGE_SIZE);
@@ -296,6 +366,9 @@ class Pager
             void * serialized_block = serialize(record , current_heap_metadata.record_size , schema_chunks);
             uint64_t write_offset = sizeof(page_header) + (page_record_count * current_heap_metadata.record_size);
             memcpy(reinterpret_cast <char *> (page_read_buffer) + write_offset , serialized_block , current_heap_metadata.record_size);
+            
+            // index_tree.insert(key_container<int>( , current_heap_metadata.page_count , page_record_count));
+
             current_heap_metadata.record_count++;
             page_record_count++;
         }
@@ -319,17 +392,58 @@ class Pager
         heap_write_stream.write(reinterpret_cast <char *> (new_page_block) , PAGE_SIZE);
         current_meta.page_count++;
         free(new_page_block);
+
         return true;
+    }
+
+
+    std::string construct_primary_key_string(std::string table_schema , AST_NODE *& action_node)
+    {
+        std::string primary_key_string = "";
+        for (AST_NODE *& current_attribute : action_node->CHILDREN)
+        {
+            if (current_attribute->isPrimary)   
+                primary_key_string += "1";
+            else
+                primary_key_string += "0";
+        }
+        return primary_key_string;
+    }
+
+    std::string get_primary_index_name(std::string pre_padding , std::string primary_key_string , std::vector<std::string> schema_chunks)
+    {
+        std::string full_index_name = "";
+        for (int i = 0 ; i < primary_key_string.size() ; i++)
+        {
+            if (primary_key_string[i] == '1')
+            {
+                std::string primary_index_name;
+                if (schema_chunks[i][0] == 's')
+                    primary_index_name = get_string_name_from_chunk(schema_chunks[i]);
+                else
+                    primary_index_name = schema_chunks[i].substr(1);
+                
+                full_index_name = pre_padding + ".index." + primary_index_name;
+                break;
+            }
+        }
+        return full_index_name;
     }
 
     bool create_new_heap(AST_NODE *& action_node)
     {
-        // working on the same database , change the behaviour for multi db
         if (heap_file_exists(action_node->PAYLOAD))
             return false;
+        
+        
         std::string table_schema = construct_schema(action_node->CHILDREN);
+        std::vector<std::string> schema_chunks = split_schema(table_schema);
         uint64_t record_size = get_size(table_schema);
-        HeapFile_Metadata current_metadata (table_schema , record_size);
+
+        std::string primary_key_string = construct_primary_key_string(table_schema , action_node);
+
+        HeapFile_Metadata current_metadata (table_schema , record_size , primary_key_string);
+
 
         std::ofstream heap_write_stream(*action_node->PAYLOAD + ".dat" , std::ios::binary);
         // writing the heap file header to the file
@@ -337,6 +451,16 @@ class Pager
         create_new_page<std::ofstream>(heap_write_stream , current_metadata);
         write_heapfile_metadata(heap_write_stream , current_metadata); // writing the updated version of hte heapfile meta
         heap_write_stream.close();
+
+        std::string primary_index_name = get_primary_index_name(*action_node->PAYLOAD , primary_key_string , schema_chunks);
+        if (primary_index_name != "") // this means that the table has a primary index
+        {
+            // just assuming the that the btree is of type INT , change this behavious
+            BTree<key_container<int> , int, 100> index_tree(sizeof(int));
+            for (int i = 1 ; i <= 10 ; i++)
+                index_tree.insert(key_container(i));
+            index_tree.disk_serialize(primary_index_name + ".dat");
+        }
         return true;
     }
 
@@ -359,6 +483,17 @@ class Pager
 
         heapfile_headers.schema.assign(schema_buffer_pointer);
         free(schema_buffer_pointer);
+
+        heap_read_stream.read(reinterpret_cast <char *> (&heapfile_headers.primary_key_string_offset) , sizeof(uint64_t));
+
+
+        char * primary_key_string_buffer_pointer = (char *)malloc (heapfile_headers.primary_key_string_offset + 1);
+        heap_read_stream.read(primary_key_string_buffer_pointer ,heapfile_headers.primary_key_string_offset);
+        primary_key_string_buffer_pointer[heapfile_headers.primary_key_string_offset] = '\0';
+
+        heapfile_headers.primary_key_string.assign(primary_key_string_buffer_pointer);
+        free(primary_key_string_buffer_pointer);
+
         return heapfile_headers;
     }
 
@@ -367,14 +502,94 @@ class Pager
         uint64_t attribute_offset = 0;
         for (const std::string & chunk : schema_chunks)
         {
-            if (*attribute == chunk.substr(1))
+            std::string current_attribute_name = "";
+            if (chunk[0] == 's')
+                current_attribute_name = get_string_name_from_chunk(chunk);
+            else 
+                current_attribute_name = chunk.substr(1);
+
+            if (*attribute == current_attribute_name)
                 return attribute_offset;
             else
-                attribute_offset += size_conversion[chunk[0]];
+            {
+                if (chunk[0] == 's')
+                    attribute_offset += get_string_size_from_chunk(chunk);
+                else
+                    attribute_offset += size_conversion[chunk[0]];
+
+            }
         }
         std::cout << "Error :: could not find the following attribute : " << *attribute << std::endl;
         exit(1);
         return attribute_offset;
+    }
+
+
+    int get_string_size_from_chunk(std::string chunk)
+    {
+        std::string attribute_size = "";
+        int offset = 1;
+        while (isdigit(chunk[offset]))
+        {
+            attribute_size += chunk[offset];
+            offset++;
+        }
+        return std::stoi(attribute_size);
+    }
+
+    std::string get_string_name_from_chunk(std::string chunk)
+    {
+        std::string attribute_name = "";
+        int offset = 1;
+        while (isdigit(chunk[offset]))
+            offset++;
+        while (offset < chunk.size())
+        {
+            attribute_name += chunk[offset];
+            offset++;
+        }
+        return attribute_name;
+    }
+
+    int get_read_size(TOKEN_SET token_type , AST_NODE *& current_condition_node , std::vector<std::string> & schema_chunks)
+    {
+        if (token_type != TOKEN_STRING_DATA)
+            return token_set_size_converter[token_type];
+        // our job here becomes a bit too complex
+        for (std::string attribute : schema_chunks)
+        {
+            if (attribute[0] == 's')
+            {
+                int attribute_size = get_string_size_from_chunk(attribute);
+                std::string attribute_name = get_string_name_from_chunk(attribute);
+                if (attribute_name == *current_condition_node->PAYLOAD)
+                    return attribute_size;
+            }
+        }
+    }
+
+    std::string get_search_string(AST_NODE *& condition_node , std::vector<std::string> & schema_chunks)
+    {
+        std::string search_string = "";
+        std::vector<std::string> condition_attribute_vector;
+        
+        for (AST_NODE * current_condition : condition_node->CHILDREN)
+            condition_attribute_vector.push_back(*current_condition->PAYLOAD);
+        
+        for (int i = 0 ; i < schema_chunks.size() ; i++)
+        {
+            std::string table_attribute;
+            if (schema_chunks[i][0] == 's')
+                table_attribute = get_string_name_from_chunk(schema_chunks[i]);
+            else
+                table_attribute = schema_chunks[i].substr(1);
+            
+            if (std::find(condition_attribute_vector.begin() , condition_attribute_vector.end() , table_attribute) == condition_attribute_vector.end())
+                search_string += "0";
+            else
+                search_string += "1";
+        }
+        return search_string;
     }
 
     std::vector<search_constraint> get_search_constraints (AST_NODE *& condition_node , std::vector<std::string> & schema_chunks)
@@ -389,7 +604,7 @@ class Pager
             new_constraint.relational_operation = current_condition->NODE_TYPE;
             new_constraint.data_type = current_condition->HELPER_TOKEN;
             new_constraint.value = *current_condition->SUB_PAYLOAD;
-            new_constraint.read_size = token_set_size_converter[current_condition->HELPER_TOKEN];
+            new_constraint.read_size = get_read_size(current_condition->HELPER_TOKEN , current_condition , schema_chunks);
 
             search_constraints.push_back(new_constraint);
         }
@@ -406,7 +621,8 @@ class Pager
             new_update_constraint.attribute_offset = get_attribute_offset(update_value_nodes->PAYLOAD , schema_chunks);
             new_update_constraint.data_type = update_value_nodes->HELPER_TOKEN;
             new_update_constraint.new_value = *update_value_nodes->SUB_PAYLOAD;
-            new_update_constraint.operation_size = token_set_size_converter[update_value_nodes->HELPER_TOKEN];
+            new_update_constraint.operation_size = get_read_size(update_value_nodes->HELPER_TOKEN , update_value_nodes , schema_chunks);
+
 
             update_vector.push_back(new_update_constraint);
         }
@@ -460,28 +676,92 @@ class Pager
         return true;
     }
 
+    void export_deserialization(std::string table_name , std::ofstream& mysql_write_stream)
+    {
+        std::ifstream heap_read_stream (table_name + ".dat" , std::ios::binary);
+        HeapFile_Metadata current_heapfile_metadata = deserialize_heapfile_metadata<std::ifstream>(heap_read_stream);
+        std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
+
+        void * page_read_buffer = malloc(PAGE_SIZE);
+        uint64_t global_record_counter = 1;
+        for (int page_counter = 1 ; page_counter <= current_heapfile_metadata.page_count ; page_counter++)
+        {
+            heap_read_stream.read(reinterpret_cast <char *> (page_read_buffer) , PAGE_SIZE);
+            uint64_t page_record_count;
+            memcpy(&page_record_count , page_read_buffer , sizeof(uint64_t));
+            uint64_t read_offset = sizeof(page_header);
+            for (int record_itr = 1 ; record_itr <= page_record_count ; record_itr++)
+            {
+                mysql_write_stream << "(";
+                deserialize(page_read_buffer , read_offset , schema_chunks , true , &mysql_write_stream);
+                if (global_record_counter == current_heapfile_metadata.record_count)
+                    mysql_write_stream << ");\n";
+                else
+                    mysql_write_stream << "),\n";
+
+                global_record_counter++;
+                read_offset += current_heapfile_metadata.record_size;
+            }
+        }
+        heap_read_stream.close();
+        
+    }
+    
     bool get_heap(AST_NODE *& action_node)
     {
-
+        // std::cout << "~"; // denotes we are printing a table for the gui client 
         if (!this->heap_file_exists(&action_node->DATA_LIST[0]))
             return false;
         std::ifstream heap_read_stream (action_node->DATA_LIST[0] + ".dat" , std::ios::binary);
         HeapFile_Metadata current_heapfile_metadata = deserialize_heapfile_metadata<std::ifstream>(heap_read_stream);
 
+        // std::cout << action_node->DATA_LIST[0] << std::endl;
+        
+        
+        std::cout << "Table Name : " << action_node->DATA_LIST[0] << std::endl;
+        std::cout << "Total records : " << current_heapfile_metadata.record_count << std::endl;
+        std::cout << "Record Size : " << current_heapfile_metadata.record_size << std::endl;
+        std::cout << "Total number of pages : " << current_heapfile_metadata.page_count << std::endl;
+        std::cout << "primary key string : " << current_heapfile_metadata.primary_key_string << std::endl;
+        std::cout << "current_schema" <<  current_heapfile_metadata.schema << std::endl;
+        // std::cout << current_heapfile_metadata.schema << std::endl;
+        
         uint64_t max_record_per_page = (PAGE_SIZE - sizeof(page_header)) / current_heapfile_metadata.record_size;
 
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
         std::vector<search_constraint> data_constraints;
+        std::string search_string;
+        bool index_lookup = false;
+
         bool constraint_flag = false;
         if (action_node->CHILD) // condition node is attached
         {
             constraint_flag = true;
             data_constraints = get_search_constraints(action_node->CHILD , schema_chunks);
+            search_string = get_search_string(action_node->CHILD , schema_chunks);
+            index_lookup = true;
+            for (int i = 0 ; i < search_string.size() ; i++)
+            {
+                if (search_string[i] == '1')
+                {
+                    if (current_heapfile_metadata.primary_key_string[i] != '1') // if the attribute is not primary 
+                    {
+                        index_lookup = false;
+                        break;
+                    }
+                }
+            }
         }
 
         for (std::string attribute : schema_chunks)
-            std::cout << attribute.substr(1) << "\t";
+        {
+            if (attribute[0] == 's')
+                std::cout << get_string_name_from_chunk(attribute) << "\t";
+            else
+                std::cout << attribute.substr(1) << "\t";
+        }
         std::cout << std::endl;
+
 
         void * page_read_buffer = malloc(PAGE_SIZE);
         for (int page_counter = 1 ; page_counter <= current_heapfile_metadata.page_count ; page_counter++)
@@ -530,9 +810,20 @@ class Pager
                 case TOKEN_STRING_DATA :
                 {
                     std::string padded_string = current_update_constraint.new_value;
-                    uint64_t required_padding_size = current_update_constraint.operation_size - padded_string.length();
-                    for (int i = 0 ; i < required_padding_size ; i++)
-                        padded_string.push_back('\0');
+
+
+                    if (padded_string.size() > current_update_constraint.operation_size) // overflow
+                    {
+                        uint64_t removal_length = padded_string.size() - current_update_constraint.operation_size;
+                        while(--removal_length)
+                            padded_string.pop_back(); // trimming the string to handle the overflow 
+                    }
+                    else if (padded_string.size() < current_update_constraint.operation_size) // underflow
+                    {
+                        uint64_t required_padding_size = current_update_constraint.operation_size - padded_string.length();
+                        for (int i = 0 ; i < required_padding_size ; i++)
+                            padded_string.push_back('\0'); // padding the string with null bytes
+                    }
                     memcpy(reinterpret_cast <char *> (page_block) + (update_base_offset + current_update_constraint.attribute_offset), padded_string.data() , current_update_constraint.operation_size);
                     break;
                 }
@@ -562,12 +853,28 @@ class Pager
 
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
         std::vector<search_constraint> data_constraints;
+        std::string search_string;
+        bool index_lookup = false;
 
         bool condition_attached = false;
         if (action_node->CHILD) // condition node is attached
         {
             condition_attached = true;
             data_constraints = get_search_constraints(action_node->CHILD , schema_chunks);
+            search_string = get_search_string(action_node->CHILD , schema_chunks);
+            index_lookup = true;
+            for (int i = 0 ; i < search_string.size() ; i++)
+            {
+                if (search_string[i] == '1')
+                {
+                    if (current_heapfile_metadata.primary_key_string[i] != '1') // if the attribute is not primary 
+                    {
+                        index_lookup = false;
+                        break;
+                    }
+                }
+            }
+
         }
 
         void * page_read_buffer = malloc(PAGE_SIZE);
@@ -580,7 +887,7 @@ class Pager
 
             bool changes_made = false;
             uint64_t new_page_record_count = page_record_count;
-            for (int record_itr = 1 ; record_itr <= page_record_count ; record_itr++)
+            for (int record_itr = 1 ; record_itr <= new_page_record_count ;)
             {
                 if (condition_attached)
                 {
@@ -590,9 +897,10 @@ class Pager
                         changes_made = true;
                         new_page_record_count--;
                         current_heapfile_metadata.record_count--;
+                        continue; //
                     }
-                    else
-                        read_offset += current_heapfile_metadata.record_size;
+                    // else
+                    //     read_offset += current_heapfile_metadata.record_size;
                 }
                 else // unconditional deletion
                 {
@@ -600,7 +908,9 @@ class Pager
                     changes_made = true;
                     new_page_record_count--;
                     current_heapfile_metadata.record_count--;
+                    continue;
                 }
+                record_itr++;
             }
             if (changes_made)
             {
@@ -627,12 +937,28 @@ class Pager
 
         std::vector<std::string> schema_chunks = split_schema(current_heapfile_metadata.schema);
         std::vector<search_constraint> data_constraints;
+        std::string search_string;
+        bool index_lookup = false;
+
 
         bool condition_attached = false;
         if (action_node->CHILD) // condition node is attached
         {
             condition_attached = true;
             data_constraints = get_search_constraints(action_node->CHILD , schema_chunks);
+            search_string = get_search_string(action_node->CHILD , schema_chunks);
+            index_lookup = true;
+            for (int i = 0 ; i < search_string.size() ; i++)
+            {
+                if (search_string[i] == '1')
+                {
+                    if (current_heapfile_metadata.primary_key_string[i] != '1') // if the attribute is not primary 
+                    {
+                        index_lookup = false;
+                        break;
+                    }
+                }
+            }
         }
         std::vector<update_constraint> update_values = get_update_constraints(action_node->CHILDREN , schema_chunks);
 
@@ -673,9 +999,10 @@ class Pager
         return true;
     }
 
-    void deserialize(void * page_block , uint64_t read_offset ,  std::vector<std::string>& schema_chunks)
+    void deserialize(void * page_block , uint64_t read_offset ,  std::vector<std::string>& schema_chunks , bool exporting = false , std::ofstream * export_stream = nullptr)
     {
         uint64_t attribute_read_offset = read_offset;
+        int counter = 0;
         for (std::string attribute : schema_chunks)
         {
             switch(attribute[0])
@@ -685,7 +1012,14 @@ class Pager
                     uint64_t read_buffer;
                     memcpy(&read_buffer , reinterpret_cast <char *> (page_block) + attribute_read_offset , sizeof(uint64_t));
                     attribute_read_offset += sizeof(uint64_t);
-                    std::cout << read_buffer << "\t";
+                    if (exporting)
+                    {
+                        *export_stream << read_buffer;
+                        if (counter != schema_chunks.size() - 1)
+                            *export_stream << ", ";
+                    }
+                    else
+                        std::cout << read_buffer << "\t";
                     break;
                 }
                 case 'f':
@@ -693,23 +1027,39 @@ class Pager
                     float read_buffer;
                     memcpy(&read_buffer , reinterpret_cast <char *> (page_block) + attribute_read_offset , sizeof(float));
                     attribute_read_offset += sizeof(float);
-                    std::cout << read_buffer << "\t";
+                    if (exporting)
+                    {
+                        *export_stream << read_buffer;
+                        if (counter != schema_chunks.size() - 1)
+                            *export_stream << ", ";
+                    }
+                    else
+                        std::cout << read_buffer << "\t";
                     break;
                 }
                 case 's':
                 {
-                    uint64_t current_size = size_conversion[attribute[0]];
+                    uint64_t current_size = get_string_size_from_chunk(attribute);
                     char * read_buffer = (char*) malloc(current_size + 1);
                     memcpy(read_buffer , reinterpret_cast <char *> (page_block) + attribute_read_offset , current_size);
                     attribute_read_offset += current_size;
                     read_buffer[current_size] = '\0';
-                    std::cout << read_buffer << "\t";
+                    if (exporting)
+                    {
+                        *export_stream << "\'" << read_buffer << "\'";
+                        if (counter != schema_chunks.size() - 1)
+                            *export_stream << ", ";
+                    }
+                    else
+                        std::cout << read_buffer << "\t";
                     free(read_buffer);
                     break;
                 }
             }
+            counter++;
         }
-        std::cout << std::endl;
+        if (!exporting)
+            std::cout << std::endl;
     }
 
 };

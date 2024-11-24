@@ -6,6 +6,8 @@
 #include <vector>
 #include <unordered_map>
 #include <chrono> // the timer thing is not working
+// create city_info
+// use city_info
 
 
 // incldue comments using the ~ operator
@@ -19,10 +21,9 @@
 #define FAIL      "\e[0;31m"
 #define SUCCESS   "\e[0;32m"
 #define DEFAULT   "\e[0;37m"
+
 #define DB_PROMPT "blue_db : " // this is subject to change
 std::string InputBuffer;
-
-
 
 typedef enum
 {
@@ -60,8 +61,13 @@ typedef enum
     TOKEN_FLOAT_DATA,
     TOKEN_TRUE,
     TOKEN_FALSE,
+    TOKEN_CREATE, 
+    TOKEN_USE,
     TOKEN_PRINT,
     TOKEN_REMOVE,
+    TOKEN_SERVER , 
+    TOKEN_SERVER_CONNECT , 
+    TOKEN_SERVER_CREATE ,
     TOKEN_UPDATE ,
     TOKEN_NOT,
     TOKEN_OR ,
@@ -76,9 +82,15 @@ typedef enum
     TOKEN_GREATER_THAN_EQUALS,
     TOKEN_ID ,
     TOKEN_EXIT,
-    TOKEN_END_OF_INPUT
+    TOKEN_END_OF_INPUT,
+    TOKEN_COLON , 
+    TOKEN_PRIMARY ,
+    TOKEN_EXPORT
 } TOKEN_SET;
 
+
+// server create 172.561.1.14:500
+// server connect
 
 typedef enum
 {
@@ -102,6 +114,11 @@ typedef enum
     NODE_STRING,
     NODE_INT,
     NODE_FLOAT,
+    NODE_SERVER_CREATE , 
+    NODE_SERVER_CONNECT ,
+    NODE_CREATE_DATABASE,
+    NODE_USE_DATABASE , 
+    NODE_EXPORT
 } NODE_SET;
 
 
@@ -116,9 +133,11 @@ struct AST_NODE
     std::vector<AST_NODE *> UPDATE_CHILDREN;
     std::vector<std::vector<AST_NODE *>> MULTI_DATA;
     TOKEN_SET HELPER_TOKEN;
+    bool isPrimary;
     AST_NODE()
     {
         CHILD = nullptr; // to avoid garbage pointer issues
+        isPrimary = false;
     }
 };
 
@@ -161,6 +180,11 @@ std::string nodeTypeToString(NODE_SET REQUIRED_NODE)
        case NODE_STRING                         : return "NODE_STRING";
        case NODE_INT                            : return "NODE_INT";
        case NODE_FLOAT                          : return "NODE_FLOAT";
+       case NODE_SERVER_CREATE                  : return "NODE_SERVER_CREATE";
+       case NODE_SERVER_CONNECT                 : return "NODE_SERVER_CONNECT"; 
+       case NODE_CREATE_DATABASE                : return "NODE_CREATE_DATABASE";
+       case NODE_USE_DATABASE                   : return "NODE_USE_DATABASE";
+       case NODE_EXPORT                         : return "NODE_EXPORT";
     }
     return "[!] UNINDENTIFIED NODE : " + REQUIRED_NODE;
 }
@@ -197,6 +221,8 @@ std::string tokenTypeToString(TOKEN_SET REQUIRED_TOKEN)
        case TOKEN_FLOAT_DATA           : return "TOKEN_FLOAT_DATA";
        case TOKEN_TRUE                 : return "TOKEN_TRUE";
        case TOKEN_FALSE                : return "TOKEN_FALSE";
+       case TOKEN_CREATE               : return "TOKEN_CREATE";
+       case TOKEN_USE                  : return "TOKEN_USE";
        case TOKEN_PRINT                : return "TOKEN_PRINT";
        case TOKEN_REMOVE               : return "TOKEN_REMOVE";
        case TOKEN_UPDATE               : return "TOKEN_UPDATE";
@@ -214,6 +240,12 @@ std::string tokenTypeToString(TOKEN_SET REQUIRED_TOKEN)
        case TOKEN_ID                   : return "TOKEN_ID";
        case TOKEN_EXIT                 : return "TOKEN_EXIT";
        case TOKEN_END_OF_INPUT         : return "TOKEN_END_OF_INPUT";
+       case TOKEN_SERVER               : return  "TOKEN_SERVER";
+       case TOKEN_SERVER_CONNECT       : return  "TOKEN_SERVER_CONNECT"; 
+       case TOKEN_SERVER_CREATE        : return  "TOKEN_SERVER_CREATE";
+       case TOKEN_COLON                : return "TOKEN_COLON";
+       case TOKEN_PRIMARY              : return "TOKEN_PRIMARY";
+       case TOKEN_EXPORT               : return "TOKEN_EXPORT";
     }
     return "[!] ERROR : UNIDENTIFIED TOKEN : " + REQUIRED_TOKEN;
 }
@@ -233,7 +265,14 @@ std::unordered_map <std::string , TOKEN_SET> KEYWORD_MAP =  {
     {"update" , TOKEN_UPDATE},
     {"exit" , TOKEN_EXIT},
     {"true" , TOKEN_TRUE},
-    {"false" , TOKEN_FALSE}
+    {"false" , TOKEN_FALSE},
+    {"server" , TOKEN_SERVER},
+    {"socket_create" , TOKEN_SERVER_CREATE},
+    {"socket_connect" , TOKEN_SERVER_CONNECT},
+    {"create" , TOKEN_CREATE},
+    {"use" , TOKEN_USE},
+    {"primary" , TOKEN_PRIMARY} , 
+    {"export" , TOKEN_EXPORT} , 
 };
 
 class Lexer
@@ -494,10 +533,13 @@ class Lexer
                 }
                 case ':':
                 {
-                    advance();
-                    if (current != ':')
-                        return throwLexerError();
-                    TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_DOUBLE_COLON));
+                    if (seek(1) == ':')
+                    {
+                        advance();
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_DOUBLE_COLON));
+                    }
+                    else
+                        TOKEN_LIST.push_back(tokenizeSPECIAL(TOKEN_COLON));
                     break;
                 }
                 case '|':
@@ -689,9 +731,23 @@ class Parser
         proceed(TOKEN_DOUBLE_COLON);
 
         AST_NODE * buffer_pointer;
+        bool primary_key_allocated = false;
         while (true)
         {
             buffer_pointer = new AST_NODE;
+
+            if (CURRENT_TOKEN->TOKEN_TYPE == TOKEN_PRIMARY)
+            {
+                if (primary_key_allocated)
+                {
+                    std::cout << "[!] Error , Cannot have multiple primary keys in a table ! " << std::endl;
+                    exit(0);
+                }
+                primary_key_allocated = true;
+                buffer_pointer->isPrimary = true;
+                proceed(TOKEN_PRIMARY);
+            }
+
             switch(CURRENT_TOKEN->TOKEN_TYPE)
             {
                 case TOKEN_INT :
@@ -705,6 +761,7 @@ class Parser
                 {
                     proceed(TOKEN_STRING);
                     buffer_pointer->NODE_TYPE = NODE_STRING;
+                    buffer_pointer->SUB_PAYLOAD = &checkAndProceed(TOKEN_INT_DATA)->VALUE;
                     buffer_pointer->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
                     break;
                 }
@@ -853,6 +910,36 @@ class Parser
         }
     }
 
+    PARSER_STATUS parseCREATE()
+    {
+        // create dbname
+        // append the name in the bluedb_ds_list file , if not there 
+        // if there , raise an error 
+        EVALUATED_NODE = new AST_NODE;
+        EVALUATED_NODE->NODE_TYPE = NODE_CREATE_DATABASE;
+
+        proceed(TOKEN_CREATE);
+        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+
+        check(TOKEN_END_OF_INPUT);
+        return PARSER_SUCCESS;
+    }
+    PARSER_STATUS parseUSE()
+    {
+        // use dbname , just set the dbname variable in the execution engine to be following
+        // also check that the dbname is in there in the bluedb_dblist file
+        // while creating or performing any database activiy , just append the name of the db before it
+        // db.table.dat
+        EVALUATED_NODE = new AST_NODE;
+        EVALUATED_NODE->NODE_TYPE = NODE_USE_DATABASE;
+
+        proceed(TOKEN_USE);
+        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+        
+        check(TOKEN_END_OF_INPUT);
+        return PARSER_SUCCESS;
+    }
+
     void parseUPDATE_VALUES(AST_NODE *& ROOT_NODE)
     {
         // id = <value>
@@ -961,6 +1048,50 @@ class Parser
         return PARSER_SUCCESS;
     }
 
+    PARSER_STATUS parseSERVER()
+    {
+        EVALUATED_NODE = new AST_NODE;
+        proceed(TOKEN_SERVER);
+
+        switch (CURRENT_TOKEN->TOKEN_TYPE)
+        {
+            case TOKEN_SERVER_CONNECT :
+            {
+                EVALUATED_NODE->NODE_TYPE = NODE_SERVER_CONNECT;
+                proceed(TOKEN_SERVER_CONNECT);
+                break;
+            }
+            case TOKEN_SERVER_CREATE :
+            {
+                EVALUATED_NODE->NODE_TYPE = NODE_SERVER_CREATE;
+                proceed(TOKEN_SERVER_CREATE);
+                break;
+            }
+            default : return throwSyntaxError();
+        }
+
+        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_FLOAT_DATA)->VALUE;
+        proceed(TOKEN_COLON);
+        EVALUATED_NODE->SUB_PAYLOAD = &checkAndProceed(TOKEN_INT_DATA)->VALUE;
+        check(TOKEN_END_OF_INPUT);
+        
+        return PARSER_SUCCESS;
+    }
+
+    PARSER_STATUS parseEXPORT()
+    {
+
+        EVALUATED_NODE = new AST_NODE;
+        EVALUATED_NODE->NODE_TYPE = NODE_EXPORT;
+        proceed(TOKEN_EXPORT);
+
+        EVALUATED_NODE->PAYLOAD = &checkAndProceed(TOKEN_ID)->VALUE;
+
+        proceed(TOKEN_END_OF_INPUT);
+        return PARSER_SUCCESS;
+
+    }
+
     PARSER_STATUS parseEXIT()
     {
         /*
@@ -995,6 +1126,11 @@ class Parser
                 case TOKEN_REMOVE : return parseREMOVE();
                 case TOKEN_UPDATE : return parseUPDATE();
                 case TOKEN_EXIT   : return parseEXIT();
+                case TOKEN_SERVER : return parseSERVER();
+                case TOKEN_CREATE : return parseCREATE();
+                case TOKEN_USE    : return parseUSE();
+                case TOKEN_EXPORT : return parseEXPORT();
+                
                 default           : return throwSyntaxError();
             }
     }
@@ -1021,7 +1157,12 @@ class EvaluationWrapper
         // USING THE LEXER TO TOKENIZE THE INPUT BUFFER
         MAIN_LEXER->initialize(InputBuffer);
         LEXER_STATUS CURRENT_LEXER_STATUS =  MAIN_LEXER->tokenize();
-        std::vector<TOKEN *>  * temp = MAIN_LEXER->getTokenStream();
+
+        // std::vector<TOKEN *>  * temp = MAIN_LEXER->getTokenStream();
+        // for (TOKEN * itr : *temp)
+        // {
+        //     std::cout << "value : " <<  itr->VALUE << " type : " << tokenTypeToString(itr->TOKEN_TYPE) << std::endl;
+        // }
 
         // USING THE PARSER TO PARSE THE TOKEN_STREAM
         PARSER_STATUS CURRENT_PARSER_STATUS;
@@ -1038,6 +1179,7 @@ class EvaluationWrapper
             std::cout << FAIL << "$ Command ID -> " << commandCount << " failed in " << time.count() << "ms\n\n" << DEFAULT;
         else
             std::cout << SUCCESS << "$ Command ID -> " << commandCount << " executed in " << time.count() << "ms\n\n" << DEFAULT;
+        
         return MAIN_PARSER->EVALUATED_NODE;
     }
 };
