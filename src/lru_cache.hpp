@@ -309,58 +309,6 @@ class LRU_Cache
 };
 
 
-// int main()
-// {
-
-//     HashTable<int> * main_table = new HashTable<int>(10);
-//     for (int i = 0 ; i < 10 ; i++)
-//         main_table->insert(rand());
-//     while(true)
-//     {
-//         main_table->renderHashMap();
-//         std::cout << "1)Insert : \n2)Delete \n3)Lookup: " << std::endl;
-//         int choice;
-//         std::cin >> choice;
-//         if (choice == 1)
-//         {
-//             std::cout << "enter the value to insert : " << std::endl;
-//             int value;
-//             std::cin >> value;
-//             bool status = main_table->insert(value);
-//             if (!status)
-//                 std::cout << "The hashmap is full , cannot insert more keys : " << std::endl;
-        
-//         }
-//         else if (choice == 2)
-//         {
-//             std::cout << "enter the value to delete : " << std::endl;
-//             int value;
-//             std::cin >> value;
-//             bool status = main_table->remove(value);
-//             if (status)
-//                 std::cout << "the given value was removed from the hashtable : " << std::endl;
-//             else 
-//                 std::cout << "error : the given value was not found in the hashtable : " << std::endl;
-//         }
-//         else 
-//         {
-//             std::cout << "Enter the key to lookup for : " << std::endl;
-//             int key;
-//             std::cin >> key;
-//             int recv = main_table->lookup(key);
-//             if (recv)
-//                 std::cout << "The lookup was successfull , this is the value which is retrieved : " << recv << std::endl;
-//             else 
-//                 std::cout << "the lookup was unsuccessfull, the value was not found in the hash map : " << std::endl;
-
-//         }
-//     }
-
-
-
-//     return 0;
-// }
-
 #endif
 
 
