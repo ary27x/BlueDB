@@ -11,21 +11,13 @@ class key_container
 {
     public:
     key_type main_key;
-    uint64_t page_id;
-    uint64_t record_id;
+    uint64_t key_offset;
 
-    key_container(key_type value)
+
+    key_container(key_type value , uint64_t _key_offset)
     {
         main_key = value;
-        page_id = value * 2;
-        record_id = value * 3;
-    }
-
-    key_container(key_type value , uint64_t _page_id , uint64_t _record_id)
-    {
-        main_key = value;
-        page_id = _page_id;
-        record_id = _record_id;
+        key_offset = _key_offset;
     }
 
     bool operator==(const key_container<key_type>& rhs)  
@@ -98,7 +90,7 @@ class key_container
 template <typename overloadT>
 std::ostream& operator << (std::ostream& os , const key_container<overloadT>& operand)
 {
-    os << operand.main_key << "(" << operand.page_id << "," << operand.record_id << ")";
+    os << operand.main_key << "(" << operand.key_offset << ")";
     return os;
 }
 
@@ -117,8 +109,6 @@ public:
         n = 0;
         keys.reserve(2 * t - 1);
         children.reserve(2 * t);
-        for (int itr = 0 ; itr < 2 * t ; itr++)
-            children.push_back(nullptr);
     }
 
     int findKey(tree_type k) 
@@ -343,6 +333,14 @@ private:
 public:
     BTreeNode<tree_type, t>* root;
 
+    BTree()
+    {
+       root = nullptr;
+       tree_key_count = 0;
+       key_size = sizeof(int); 
+    } 
+
+
     BTree(uint16_t _key_size) 
     {
         root = nullptr;
@@ -354,8 +352,7 @@ public:
     void write_key_containter(std::ofstream & b_tree_write_stream , key_container<type>& current_key)
     {
         b_tree_write_stream.write(reinterpret_cast <char *> (&current_key.main_key) , this->key_size);
-        b_tree_write_stream.write(reinterpret_cast <char *> (&current_key.page_id) , sizeof(uint64_t));
-        b_tree_write_stream.write(reinterpret_cast <char *> (&current_key.record_id) , sizeof(uint64_t));
+        b_tree_write_stream.write(reinterpret_cast <char *> (&current_key.key_offset) , sizeof(uint64_t));
     }
 
     void disk_serialize(std::string file_name)
@@ -365,8 +362,12 @@ public:
         b_tree_write_stream.write(reinterpret_cast <char *> (&tree_key_count) , sizeof(uint64_t));
         b_tree_write_stream.write(reinterpret_cast <char *> (&this->key_size) , sizeof(uint16_t));
 
+        // we dont even need the key size
+
         std::queue<BTreeNode<tree_type, t>*> q;
-        q.push(root);
+        
+        if (root)
+            q.push(root);
 
         while (!q.empty()) {
             int size = q.size();
@@ -391,7 +392,8 @@ public:
 
     void insert(tree_type k) {
         tree_key_count++;
-        if (root == nullptr) {
+        if (root == nullptr) 
+        {
             root = new BTreeNode<tree_type, t>();
             root->keys.push_back(k);
             root->n = 1;
@@ -421,43 +423,44 @@ public:
         tree_read_stream.read(reinterpret_cast <char*> (&read_key_count) , sizeof(uint64_t));
         tree_read_stream.read(reinterpret_cast <char*> (&read_key_size) , sizeof(uint16_t));
 
-        std::cout << "this is the the valu ofht key count; " << read_key_count << std::endl;
-        std::cout << "this is he value of the key size : " << read_key_size << std::endl;
-
         while (read_key_count--)
         {
             inner_type main_key;
-            uint64_t page_id;
-            uint64_t record_id;
+            uint64_t key_offset;
 
             tree_read_stream.read(reinterpret_cast <char *> (&main_key) , read_key_size);
-            tree_read_stream.read(reinterpret_cast <char *> (&page_id) , sizeof(uint64_t));
-            tree_read_stream.read(reinterpret_cast <char *> (&record_id) , sizeof(uint64_t));
+            tree_read_stream.read(reinterpret_cast <char *> (&key_offset) , sizeof(uint64_t));
             
-            this->insert(key_container<inner_type>(main_key , page_id , record_id));
+            // avoiding the insert now 
+            this->insert(key_container<inner_type>(main_key , key_offset));
         }
         
     }
 
-    tree_type search(BTreeNode<tree_type, t> *& current ,  tree_type value)
+    tree_type search(BTreeNode<tree_type, t> *& current, tree_type value)
     {
         if (current == nullptr)
         {
-            key_container<inner_type> not_found(-1,-1,-1);
+            key_container<inner_type> not_found(-1,-1);
             return not_found;
-        } 
-        BTreeNode<tree_type, t> * next_block = current->children[current->n];
-        for (int itr = 0 ; itr < current->n ; itr++)
-        {
-            if (value < current->keys[itr])
-            {
-                next_block = current->children[itr];
-                break;
-            }
-            if (value == current->keys[itr])
-                return current->keys[itr];
         }
-        search(next_block , value);
+        
+        int i = 0;
+        while (i < current->n && value > current->keys[i])
+        {
+            i++;
+        }
+        
+        if (i < current->n && value == current->keys[i])
+            return current->keys[i];
+
+        if (current->leaf)
+        {
+            key_container<inner_type> not_found(-1,-1);
+            return not_found;
+        }
+        
+        return search(current->children[i], value);
     }
 
     void remove(tree_type k) 
