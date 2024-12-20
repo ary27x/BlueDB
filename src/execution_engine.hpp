@@ -6,7 +6,7 @@
 #include <string>
 #include "frontend.hpp"
 #include "pager.hpp"
-#include "lru_cache.hpp"
+// #include "lru_cache.hpp"
 
 
 struct server_details
@@ -20,11 +20,9 @@ struct server_details
     } 
 };
 
-
 class execution_engine
 {
     private :
-    Pager * main_pager;
     bool connected_to_server;
     server_details * server_info;
     std::string current_db;
@@ -33,45 +31,35 @@ class execution_engine
     std::vector<NODE_SET> independant_commands = {NODE_CREATE_DATABASE , NODE_USE_DATABASE , NODE_SERVER_CONNECT , NODE_SERVER_CREATE , NODE_EXIT , NODE_EXPORT};
     
     public :
+    Pager * main_pager;
+    int command_counter;
+
     execution_engine()
     {
         main_pager = new Pager();
         connected_to_server = false;
         server_info = nullptr;
         current_db = "";
+        command_counter = 0;
     }
 
-    void generate_records(uint64_t data)
-{
+    void generate_records(uint64_t start , uint64_t data , std::string _table)
+    {
     std::time_t start_time = std::time(nullptr);
     std::cout << "Start time : " <<  start_time << std::endl;
 
-    std::string * table_name = new std::string("main_db.students");
+    std::string * table_name = new std::string(_table);
     AST_NODE * action_node = new AST_NODE();
     action_node->PAYLOAD = table_name;
 
-    uint64_t percentage_counter = 0;
-    uint64_t percentage_chunk = data / 100;
-    uint64_t counter = 0;
 
     // Batch size set to 1 million
-    const uint64_t batch_size = 1000000;
-
-    const uint64_t total_batches = data / batch_size;
     
-    std::cout << "Total Number Of Batches : " << total_batches << std::endl;
     
-    for (uint64_t itr = 1; itr <= data; itr++)
-    {
-        counter++;
-        std::cout << "\rCurrent Batch Number : " << counter << " -> "  << (int) (((float)(counter  - 1)/ total_batches) * 100) << "%" ;
+    std::vector<std::vector<AST_NODE *>> multi_data_records;
 
-        std::vector<std::vector<AST_NODE *>> multi_data_records;
-
-        int s = 0;
-        for (uint64_t batch_itr = 1; batch_itr <= batch_size && itr <= data; batch_itr++, itr++)
+        for (uint64_t itr = start; itr <= data; itr++)
         {
-            s++;
             std::vector<AST_NODE *> buffer_vector;
             // int id, string name, int age
             AST_NODE * id_node = new AST_NODE();
@@ -84,7 +72,7 @@ class execution_engine
 
             std::string * id_value = new std::string(std::to_string(itr));
             std::string * name_value = new std::string("n" + std::to_string(itr));
-            std::string * age_value = new std::string(std::to_string(rand() % 100));
+            std::string * age_value = new std::string(std::to_string(itr));
 
             id_node->PAYLOAD = id_value;
             name_node->PAYLOAD = name_value;
@@ -96,7 +84,6 @@ class execution_engine
 
             multi_data_records.push_back(buffer_vector);
         }
-        itr--;
 
         action_node->MULTI_DATA = multi_data_records;
         main_pager->add_to_heap(action_node);
@@ -114,7 +101,6 @@ class execution_engine
         multi_data_records.clear();
 
         
-    }
 
     std::time_t end_time = std::time(nullptr);
     std::cout << "End time : " <<  end_time << std::endl;
@@ -122,58 +108,81 @@ class execution_engine
     std::cout << "Time taken : " << end_time - start_time << " seconds "<< std::endl;
 }
 
-
     bool handle_new(AST_NODE *& action_node)
     {
+        std::time_t start_time = std::time(nullptr);
         std::string table_name_copy = *action_node->PAYLOAD;
         std::string append_db_name = this->current_db + "." + *action_node->PAYLOAD;
         action_node->PAYLOAD = &append_db_name;
         
         bool status = main_pager->create_new_heap(action_node);
         if (!status)
-            std::cout << "Error , the given table already exists in the table ! " << std::endl;
-        else
         {
-            std::ofstream write_stream("bluedb_" + this->current_db + "_metadata.txt" , std::ios::app | std::ios::out);
-            write_stream << table_name_copy << "\n";
-            write_stream.close();
-            std::cout << "The table was created ! " << std::endl;
+            std::cout << FAIL << "\n[!] ERROR : Table Already Exists : " << *action_node->PAYLOAD<< std::endl;        
+            std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+            return false;
         }
+            
+        std::ofstream write_stream("bluedb_" + this->current_db + "_metadata.txt" , std::ios::app | std::ios::out);
+        write_stream << table_name_copy << "\n";
+        write_stream.close();
+
+        std::cout << SUCCESS << "\n[*] Table Created : " << *action_node->PAYLOAD << std::endl;        
+        std::cout << SUCCESS << "$ Command ID -> " << this->command_counter << " executed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+        return true;
     }
+
     bool handle_add(AST_NODE *& action_node)
     {
+        std::time_t start_time = std::time(nullptr);
         std::string name_copy = *action_node->PAYLOAD;
         std::string append_db_name = this->current_db + "." + *action_node->PAYLOAD;
         action_node->PAYLOAD = &append_db_name; 
 
         bool status = main_pager->add_to_heap(action_node);
+        if (!status)
+        {
+            std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+            return false;
+        }
+
+        std::cout << SUCCESS << "\n[*] Data Inserted Successfully"  << DEFAULT << std::endl;
+
         AST_NODE * print_node = new AST_NODE();
         action_node->PAYLOAD = &name_copy; // this is to prevent double db name insertion
         print_node->DATA_LIST.push_back(*action_node->PAYLOAD);
 
-        handle_print(print_node);
+        handle_print(print_node , start_time);
         delete print_node;
         return true;
 
     }
-    bool handle_print(AST_NODE *& action_node)
+    
+    bool handle_print(AST_NODE *& action_node , std::time_t parent_function_start_time = 0)
     {
-        
+        std::time_t start_time;
+        if (parent_function_start_time == 0)
+            start_time = std::time(nullptr);
+        else
+            start_time = parent_function_start_time;
+
         action_node->DATA_LIST[0] = this->current_db + "." + action_node->DATA_LIST[0];
-     
-        std::time_t start_time = std::time(nullptr);
 
         bool status = main_pager->get_heap(action_node);
         if (!status)
-            std::cout << "Error , the given table does not exist in the database : " << this->current_db << std::endl;
+        {
+            std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+            return false;
+        }
 
-        std::time_t end_time = std::time(nullptr);
-
-        std::cout << "Time Taken : " << end_time - start_time << std::endl;
+        std::cout << SUCCESS << "\n$ Command ID -> " << this->command_counter << " executed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+        return true;
 
     }
+    
     bool handle_update(AST_NODE *& action_node)
     {
+        std::time_t start_time = std::time(nullptr);
         std::string name_copy = *action_node->PAYLOAD;
 
         std::string append_db_name = this->current_db + "." + *action_node->PAYLOAD;
@@ -181,36 +190,55 @@ class execution_engine
 
         bool status = main_pager->update_heap(action_node);
         if (!status)
-            std::cout << "There was some error while trying to update the database";
+        {
+            std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+            return false;
+        }
+
+        std::cout << SUCCESS << "\n[*] Table Updated Successfully "  << DEFAULT << std::endl;
 
         AST_NODE * print_node = new AST_NODE();
         action_node->PAYLOAD = &name_copy; // this is to prevent double db name insertion
         print_node->DATA_LIST.push_back(*action_node->PAYLOAD);
 
-        handle_print(print_node);
+        handle_print(print_node , start_time);
         delete print_node;
 
+        return true;
+
+
     }
+    
     bool handle_remove(AST_NODE *& action_node)
     {
+        std::time_t start_time = std::time(nullptr);
         std::string name_copy = *action_node->PAYLOAD;
 
         std::string append_db_name = this->current_db + "." + *action_node->PAYLOAD;
         action_node->PAYLOAD = &append_db_name;
 
-        main_pager->delete_from_heap(action_node);
-        
+        bool status = main_pager->delete_from_heap(action_node);
+        if (!status)
+        {
+            std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+            return false;
+        }
+
+        std::cout << SUCCESS << "\n[*] Deletion Performed Successfully "  << DEFAULT << std::endl;
+
         AST_NODE * print_node = new AST_NODE();
         action_node->PAYLOAD = &name_copy; // this is to prevent double db name insertion
 
         print_node->DATA_LIST.push_back(*action_node->PAYLOAD);
 
-        handle_print(print_node);
+        handle_print(print_node , start_time);
         delete print_node;
+        return true;
     }
 
     bool handle_exit(AST_NODE *& action_node)
     {
+        std::cout << FAIL << "\n[~] Exiting SystemX" << DEFAULT <<  std::endl;
         exit(0);
     }
 
@@ -221,6 +249,7 @@ class execution_engine
         return true;
         
     }
+    
     bool handle_connect_server(AST_NODE *& action_node)
     {
         std::cout << "Connect to the server : " << std::endl;
@@ -239,13 +268,20 @@ class execution_engine
 
     bool handle_create_database(AST_NODE *& action_node)
     {
+        std::time_t start_time = std::time(nullptr);
         std::ofstream write_stream("bluedb_database_list.txt" , std::ios::app | std::ios::out);
         write_stream << *action_node->PAYLOAD << "\n";
         write_stream.close();
+
+        std::cout << SUCCESS << "\n[*] Database Created : " << *action_node->PAYLOAD << std::endl;
+        std::cout << SUCCESS << "$ Command ID -> " << this->command_counter << " executed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+        return true;
+
     }
+    
     bool handle_use_database(AST_NODE *& action_node)
     {
-
+        std::time_t start_time = std::time(nullptr);
         std::ifstream read_stream("bluedb_database_list.txt");
         std::string existing_db_name;
         while (std::getline(read_stream , existing_db_name))
@@ -254,17 +290,22 @@ class execution_engine
             {
                 this->current_db = *action_node->PAYLOAD;
                 read_stream.close();
+
+                std::cout << SUCCESS << "\n[*] Working On Database : " << *action_node->PAYLOAD << std::endl;
+                std::cout << SUCCESS << "$ Command ID -> " << this->command_counter << " executed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+                
                 return true;
             }
         }
-        std::cout << "Error ! The database name was not found !" << std::endl;
         read_stream.close();
+        std::cout << FAIL << "\n[!] ERROR : The Database Was Not Found : " << *action_node->PAYLOAD << std::endl;
+        std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
         return false;
     }
 
-
     bool handle_export_database(AST_NODE *& action_node)
     {
+        std::time_t start_time = std::time(nullptr);
         std::ifstream read_stream("bluedb_database_list.txt");
         std::string existing_db_name;
         bool found = false;
@@ -281,7 +322,8 @@ class execution_engine
 
         if (!found)
         {
-            std::cout << "The database was not found hence could not be exported ! " << std::endl;
+            std::cout << FAIL << "\n[!] ERROR : Choose Not Find Database : " << *action_node->PAYLOAD << std::endl;
+            std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
             return false;
         }
         
@@ -347,6 +389,11 @@ class execution_engine
 
         mysql_write_stream.close();
         table_read_stream.close();
+
+        std::cout << SUCCESS << "\n[*] Database Exported As : " << *action_node->PAYLOAD << ".sql" << std::endl;
+        std::cout << SUCCESS << "$ Command ID -> " << this->command_counter << " executed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+        return true;
+
     }
 
     bool check_for_db_usage()
@@ -356,16 +403,16 @@ class execution_engine
         return true;
     }
     
-
     bool execute (AST_NODE *& action_node)
     {
+        this->command_counter++;
+        std::time_t start_time = std::time(nullptr);
+
         if (connected_to_server)
         {
             push_to_server(action_node);
             return true;
         }
-
-        
         
         bool is_independant_command = false;
         for (NODE_SET itr : independant_commands)
@@ -376,12 +423,13 @@ class execution_engine
         {
             if (!check_for_db_usage()) // db is not selected for a dependant command
             {
-                std::cout << "Please choose a database to perform the operation on ! " << std::endl;
+                std::cout << FAIL << "\n[!] ERROR : Choose A Database To Perform The Operation On" << std::endl;
+                std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
                 return false;
             }
         }
 
-        
+  
         switch(action_node->NODE_TYPE)
         {
             case NODE_NEW             : return this->handle_new(action_node);
@@ -395,9 +443,18 @@ class execution_engine
             case NODE_CREATE_DATABASE : return this->handle_create_database(action_node);
             case NODE_USE_DATABASE    : return this->handle_use_database(action_node); 
             case NODE_EXPORT          : return this->handle_export_database(action_node); 
-            
         }
+        return true;
+
     }
 };
 
+
+/*
+
+std::cout << FAIL << "\n[!] ERROR : Choose A Database To Perform The Operation On" << std::endl;
+std::cout << FAIL << "$ Command ID -> " << this->command_counter << " failed in " << std::time(nullptr) - start_time << " sec\n\n" << DEFAULT;
+return false;
+
+*/
 #endif
