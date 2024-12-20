@@ -5,24 +5,15 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <chrono> // the timer thing is not working
-// create city_info
-// use city_info
-
-
-// incldue comments using the ~ operator
-
-// currently the data type support is only for int , float and string types
-// add to the code such that the string support is extended for other
-// data types as well
-
-// add the ability to sort the results by ascending or descending order
 
 #define FAIL      "\e[0;31m"
 #define SUCCESS   "\e[0;32m"
 #define DEFAULT   "\e[0;37m"
+#define BLUE      "\e[1;34m"  
+#define YELLOW    "\e[0;33m"     
 
-#define DB_PROMPT "blue_db : " // this is subject to change
+
+#define DB_PROMPT "SystemX $ " 
 std::string InputBuffer;
 
 typedef enum
@@ -87,10 +78,6 @@ typedef enum
     TOKEN_PRIMARY ,
     TOKEN_EXPORT
 } TOKEN_SET;
-
-
-// server create 172.561.1.14:500
-// server connect
 
 typedef enum
 {
@@ -278,7 +265,6 @@ std::unordered_map <std::string , TOKEN_SET> KEYWORD_MAP =  {
 class Lexer
 {
     private :
-
     int cursor;
     int length;
     char current;
@@ -396,7 +382,7 @@ class Lexer
 
     LEXER_STATUS throwLexerError()
     {
-        std::cout << FAIL << "[!] LEXER ERROR : UNIDENTIFIED CHARACTER AT INDEX " << cursor << " : " << current << std::endl;
+        std::cout << FAIL << "\n[!] Lexer Error : Unidentified Character At Index " << cursor << " : " << current << std::endl << std::endl;
         return LEXER_FAIL;
     }
 
@@ -568,7 +554,7 @@ class Lexer
                 }
                 case '\0' : break;
                 default :
-                {std::cout << "this is from here : " ;return throwLexerError();}
+                {return throwLexerError();}
             }
             }
         }
@@ -590,33 +576,66 @@ class Parser
 
     PARSER_STATUS throwVerboseSyntaxError(TOKEN_SET REQUIRED_TOKEN)
     {
-        std::cout << FAIL << "[!] SYNTAX ERROR : Unexpected Token : " << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << " , Expected Token : " << tokenTypeToString(REQUIRED_TOKEN) << DEFAULT << std::endl;
+        if (error_level == 1)
+            return PARSER_FAIL;
+
+        std::cout << FAIL << "\n[!] SYNTAX ERROR : Unexpected Token : " << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << " , Expected Token : " << tokenTypeToString(REQUIRED_TOKEN) << DEFAULT << std::endl;
         int positionCounter = 0;
+        int arrow_counter = 0;
+
         for (char currentCharacter : InputBuffer)
         {
             if (positionCounter >= CURRENT_TOKEN->position && positionCounter <= CURRENT_TOKEN->position + CURRENT_TOKEN->VALUE.length())
+            {
+                if (arrow_counter == 0)
+                    arrow_counter = positionCounter;
                 std::cout << FAIL << currentCharacter << DEFAULT ;
+            }
             else
                 std::cout << currentCharacter;
             positionCounter++;
         }
-        exit(0); // change the behaviour of this
+        std::cout << std::endl;
+
+        while (arrow_counter--)
+            std::cout << " ";
+        std::cout << FAIL << "^" << DEFAULT;
+        
+
+        std::cout << "\n\n";
+        error_level = 1;
         return PARSER_FAIL;
     }
 
     PARSER_STATUS throwSyntaxError()
     {
-        std::cout << FAIL << "[!] SYNTAX ERROR : UNEXPECTED TOKEN : " << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << DEFAULT << std::endl;
+        if (error_level == 1)
+            return PARSER_FAIL;
+            
+        std::cout << FAIL << "\n[!] SYNTAX ERROR : UNEXPECTED TOKEN : " << tokenTypeToString(CURRENT_TOKEN->TOKEN_TYPE) << DEFAULT << std::endl;
         int positionCounter = 0;
+        int arrow_counter = 0;
+        
         for (char currentCharacter : InputBuffer)
         {
             if (positionCounter >= CURRENT_TOKEN->position && positionCounter <= CURRENT_TOKEN->position + CURRENT_TOKEN->VALUE.length())
+            {
+                if (arrow_counter == 0)
+                    arrow_counter = positionCounter;
                 std::cout << FAIL << currentCharacter << DEFAULT ;
+            }
             else
                 std::cout << currentCharacter;
             positionCounter++;
         }
-        exit(0); // also change this behaviour
+        std::cout << std::endl;
+
+        while (arrow_counter--)
+            std::cout << " ";
+        std::cout << FAIL << "^" << DEFAULT;
+
+        std::cout << "\n\n";
+        error_level = 1;
         return PARSER_FAIL;
     }
 
@@ -1103,9 +1122,12 @@ class Parser
         check(TOKEN_END_OF_INPUT);
         return PARSER_SUCCESS;
     }
+    
     public  :
+
     Parser() {}
     AST_NODE * EVALUATED_NODE;
+    int error_level;
 
     void initialize(std::vector<TOKEN *> * TOKEN_LIST_ADDRESS)
     {
@@ -1114,6 +1136,7 @@ class Parser
         token_number = 0;
         CURRENT_TOKEN = LOCAL_COPY_TOKEN_STREAM[token_number];
         syntaxError = false;
+        error_level = 0;
     }
 
     PARSER_STATUS parse()
@@ -1130,7 +1153,6 @@ class Parser
                 case TOKEN_CREATE : return parseCREATE();
                 case TOKEN_USE    : return parseUSE();
                 case TOKEN_EXPORT : return parseEXPORT();
-                
                 default           : return throwSyntaxError();
             }
     }
@@ -1141,46 +1163,33 @@ class EvaluationWrapper
     private :
     Lexer * MAIN_LEXER;
     Parser * MAIN_PARSER;
-    int commandCount;
 
     public :
     EvaluationWrapper()
     {
         MAIN_LEXER = new Lexer();
         MAIN_PARSER = new Parser();
-        commandCount = 0;
     }
 
     AST_NODE * handle (std::string InputBuffer)
     {
-        auto startTimer = std::chrono::high_resolution_clock::now();
-        // USING THE LEXER TO TOKENIZE THE INPUT BUFFER
         MAIN_LEXER->initialize(InputBuffer);
         LEXER_STATUS CURRENT_LEXER_STATUS =  MAIN_LEXER->tokenize();
 
-        // std::vector<TOKEN *>  * temp = MAIN_LEXER->getTokenStream();
-        // for (TOKEN * itr : *temp)
-        // {
-        //     std::cout << "value : " <<  itr->VALUE << " type : " << tokenTypeToString(itr->TOKEN_TYPE) << std::endl;
-        // }
-
-        // USING THE PARSER TO PARSE THE TOKEN_STREAM
-        PARSER_STATUS CURRENT_PARSER_STATUS;
-        if (CURRENT_LEXER_STATUS == LEXER_SUCCESS) // could make use of assert here to make things cleaner
-            // and write cleaner and more understandable code
+        if (CURRENT_LEXER_STATUS == LEXER_SUCCESS) 
         {
+            PARSER_STATUS CURRENT_PARSER_STATUS;
             MAIN_PARSER->initialize(MAIN_LEXER->getTokenStream());
             CURRENT_PARSER_STATUS = MAIN_PARSER->parse();
+            if (MAIN_PARSER->error_level == 1) // HANDLING PARSER FAIL
+                return nullptr;
+            else
+                return MAIN_PARSER->EVALUATED_NODE;
         }
-        auto stopTimer = std::chrono::high_resolution_clock::now();
-        auto time = std::chrono::duration_cast<std::chrono::microseconds> (stopTimer - startTimer);
-        commandCount++;
-        if (CURRENT_LEXER_STATUS == LEXER_FAIL || CURRENT_PARSER_STATUS == PARSER_FAIL)
-            std::cout << FAIL << "$ Command ID -> " << commandCount << " failed in " << time.count() << "ms\n\n" << DEFAULT;
-        else
-            std::cout << SUCCESS << "$ Command ID -> " << commandCount << " executed in " << time.count() << "ms\n\n" << DEFAULT;
-        
-        return MAIN_PARSER->EVALUATED_NODE;
+        else // HANDLING LEXER FAIL
+            return nullptr;
+    
+        return nullptr; // dummy nullptr return 
     }
 };
 
